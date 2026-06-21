@@ -326,6 +326,30 @@ await test('disabled when no key configured (graceful, not signed)', async () =>
   assert.strictEqual(envelope.attestation.signed, false)
 })
 
+console.log('\n/diligence total-failure integrity guard:')
+
+await test('both checks failed → treated as total failure (502, not signed 200)', async () => {
+  const { isTotalFailure } = await import('../src/diligence.js')
+  assert.strictEqual(isTotalFailure({ ok: false }, { ok: false }), true)
+})
+
+await test('partial success (one ok) → NOT total failure (still returns 200)', async () => {
+  const { isTotalFailure } = await import('../src/diligence.js')
+  assert.strictEqual(isTotalFailure({ ok: true }, { ok: false }), false)
+  assert.strictEqual(isTotalFailure({ ok: false }, { ok: true }), false)
+})
+
+await test('single failed check → total failure', async () => {
+  const { isTotalFailure } = await import('../src/diligence.js')
+  assert.strictEqual(isTotalFailure({ ok: false }, null), true)
+})
+
+await test('single ok / nothing attempted → not total failure', async () => {
+  const { isTotalFailure } = await import('../src/diligence.js')
+  assert.strictEqual(isTotalFailure({ ok: true }, null), false)
+  assert.strictEqual(isTotalFailure(null, null), false)
+})
+
 console.log(`\n${passed} passed, ${failed} failed`)
 
 global.fetch = originalFetch

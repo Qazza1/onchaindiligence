@@ -34,6 +34,7 @@ import { createRateLimiter, callerKeyFromHeaders } from './rateLimit.js'
 import { chainalysisHealthy, companiesHouseHealthy } from './health.js'
 import { logPaymentSuccess, logPaymentFailed } from './paymentLog.js'
 import { attest, attestationEnabled, getPublicKeyPem, getKeyId } from './attestation.js'
+import { isTotalFailure } from './diligence.js'
 
 assertConfigured()
 
@@ -256,6 +257,28 @@ app.get(
       response.company_check = companyOutcome.ok
         ? { ...companyOutcome.value, ...companiesHouseAttribution() }
         : { error: companyOutcome.error }
+    }
+
+    // Integrity guard: never return a signed 200 over a response in which
+    // EVERY attempted check failed. A signed, success-shaped attestation
+    // wrapping nothing but errors would be misleading for an auditor — the
+    // signature would vouch for a "result" that contains no actual result.
+    // Partial success (one ok, one failed) is fine and still returns 200,
+    // because the caller received real value for at least one check.
+    if (isTotalFailure(walletOutcome, companyOutcome)) {
+      c.header('Retry-After', '30')
+      return c.json(
+        {
+          error: 'all requested checks failed',
+          detail:
+            'Every requested provider returned an error during lookup, so there ' +
+            'is no result to attest. This response is intentionally unsigned. ' +
+            'Please retry shortly.',
+          wallet_check: response.wallet_check,
+          company_check: response.company_check,
+        },
+        502
+      )
     }
 
     // This line is the most important part of this endpoint's response.
