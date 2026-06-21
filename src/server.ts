@@ -36,6 +36,7 @@ import { logPaymentSuccess, logPaymentFailed } from './paymentLog.js'
 import { attest, attestationEnabled, getPublicKeyPem, getKeyId } from './attestation.js'
 import { isTotalFailure } from './diligence.js'
 import { buildOpenApiSpec } from './openapi.js'
+import { screenName, buildOfacAttribution, OfacUpstreamError } from './ofac.js'
 
 assertConfigured()
 
@@ -142,6 +143,55 @@ app.get(
         attest({
           ...result,
           ...chainalysisAttribution(),
+          checked_at: new Date().toISOString(),
+        })
+      )
+    } catch (err) {
+      return handleUpstreamError(c, err)
+    }
+  }
+)
+
+// ---------------------------------------------------------------------
+// Route 1b: OFAC SDN name screening
+//
+// GET /screen-name?name=Vladimir%20Putin[&threshold=0.85]
+//
+// Fuzzy-matches a person/company name against the official US Treasury OFAC
+// SDN list (primary names + strong aliases). Returns scored candidate
+// matches — a screening aid, never a determination. See ofac.ts for the
+// honest scope notes.
+// ---------------------------------------------------------------------
+app.get(
+  '/screen-name',
+  rateLimit,
+  mppx.charge({ amount: config.pricing.nameScreen }),
+  async (c) => {
+    const name = c.req.query('name')
+    if (!name || name.trim().length < 2) {
+      return c.json(
+        { error: 'provide ?name= with at least 2 characters' },
+        400
+      )
+    }
+
+    // Optional caller-tunable threshold (0.5–1.0); defaults to 0.85.
+    let threshold = 0.85
+    const t = c.req.query('threshold')
+    if (t !== undefined) {
+      const parsed = Number(t)
+      if (!Number.isFinite(parsed) || parsed < 0.5 || parsed > 1) {
+        return c.json({ error: 'threshold must be a number between 0.5 and 1.0' }, 400)
+      }
+      threshold = parsed
+    }
+
+    try {
+      const result = await screenName(name, threshold)
+      return c.json(
+        attest({
+          ...result,
+          ...buildOfacAttribution(),
           checked_at: new Date().toISOString(),
         })
       )
@@ -325,6 +375,12 @@ function handleUpstreamError(c: any, err: unknown) {
   if (err instanceof ChainalysisRateLimitError) {
     return c.json({ error: describeError(err) }, 503)
   }
+  if (err instanceof OfacUpstreamError) {
+    return c.json(
+      { error: 'OFAC SDN list is temporarily unavailable, please retry shortly' },
+      err.status === 404 ? 502 : 503
+    )
+  }
   return c.json({ error: describeError(err) }, 502)
 }
 
@@ -414,6 +470,7 @@ app.get('/', (c) =>
     service: config.service.title,
     routes: {
       'GET /screen/:address': `Sanctions check only — $${config.pricing.sanctionsCheck}`,
+      'GET /screen-name?name=': `OFAC SDN name screening — $${config.pricing.nameScreen}`,
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
       'GET /diligence?wallet=&company=': `Combined check — $${config.pricing.combinedDiligence}`,
     },

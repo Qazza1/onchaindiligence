@@ -43,6 +43,7 @@ export const config = {
     sanctionsCheck: '0.01',
     companyCheck: '0.01',
     combinedDiligence: '0.015', // slight discount vs. running both separately
+    nameScreen: '0.01',
   },
 
   // --- Sanctions oracle (on-chain, no API key) --------------------------
@@ -67,6 +68,13 @@ export const config = {
   companiesHouse: {
     apiKey: process.env.COMPANIES_HOUSE_API_KEY ?? '',
     baseUrl: 'https://api.company-information.service.gov.uk',
+  },
+
+  // --- OFAC SDN name screening (public-domain US Treasury data) ----------
+  // Official OFAC CSV endpoints. Overridable via env for testing/mirrors.
+  ofac: {
+    sdnUrl: process.env.OFAC_SDN_URL || 'https://www.treasury.gov/ofac/downloads/sdn.csv',
+    altUrl: process.env.OFAC_ALT_URL || 'https://www.treasury.gov/ofac/downloads/alt.csv',
   },
 
   // --- Service metadata (used in discovery / OpenAPI generation) --------

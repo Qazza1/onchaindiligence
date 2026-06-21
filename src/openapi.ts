@@ -97,6 +97,50 @@ export function buildOpenApiSpec() {
           'x-payment-info': paymentExtension(p.sanctionsCheck),
         },
       },
+      '/screen-name': {
+        get: {
+          tags: ['Checks'],
+          summary: 'Sanctions-screen a name (OFAC SDN)',
+          description:
+            'Fuzzy-matches a person or company name against the official U.S. ' +
+            'Treasury OFAC Specially Designated Nationals (SDN) list, including ' +
+            'strong aliases. Returns scored candidate matches — a screening aid, ' +
+            'not a determination. Weak AKAs are not screened, per OFAC guidance.',
+          operationId: 'screenName',
+          parameters: [
+            {
+              name: 'name',
+              in: 'query',
+              required: true,
+              description: 'Person or company name to screen (min 2 chars).',
+              schema: { type: 'string', minLength: 2 },
+              example: 'Vladimir Putin',
+            },
+            {
+              name: 'threshold',
+              in: 'query',
+              required: false,
+              description: 'Match confidence cutoff, 0.5–1.0 (default 0.85).',
+              schema: { type: 'number', minimum: 0.5, maximum: 1, default: 0.85 },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Signed name-screening result.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/SignedNameScreenResult' },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/BadRequest' },
+            '402': { $ref: '#/components/responses/PaymentRequired' },
+            '502': { $ref: '#/components/responses/UpstreamError' },
+            '503': { $ref: '#/components/responses/Unavailable' },
+          },
+          'x-payment-info': paymentExtension(p.nameScreen),
+        },
+      },
       '/company/{companyNumber}': {
         get: {
           tags: ['Checks'],
@@ -260,6 +304,31 @@ export function buildOpenApiSpec() {
             algorithm: { type: 'string', example: 'ed25519' },
             signature: { type: 'string', description: 'base64url signature.' },
             issued_at: { type: 'string', format: 'date-time' },
+          },
+        },
+        SdnMatch: {
+          type: 'object',
+          properties: {
+            ent_num: { type: 'integer', description: 'OFAC entity number.' },
+            matched_name: { type: 'string' },
+            matched_on: { type: 'string', enum: ['primary', 'alias'] },
+            sdn_type: { type: 'string', nullable: true },
+            program: { type: 'string', nullable: true, description: 'Sanctions program.' },
+            score: { type: 'number', description: 'Match confidence, 0–1.' },
+          },
+        },
+        SignedNameScreenResult: {
+          type: 'object',
+          properties: {
+            query: { type: 'string' },
+            normalized_query: { type: 'string' },
+            hit: { type: 'boolean' },
+            matches: { type: 'array', items: { $ref: '#/components/schemas/SdnMatch' } },
+            list_date: { type: 'string', nullable: true },
+            threshold: { type: 'number' },
+            source: { type: 'string' },
+            note: { type: 'string' },
+            attestation: { $ref: '#/components/schemas/Attestation' },
           },
         },
         SanctionsData: {

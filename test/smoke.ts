@@ -326,6 +326,50 @@ await test('disabled when no key configured (graceful, not signed)', async () =>
   assert.strictEqual(envelope.attestation.signed, false)
 })
 
+console.log('\nOFAC SDN name screening:')
+
+await test('parseOfacLine handles quotes and the -0- null sentinel', async () => {
+  const { parseOfacLine } = await import('../src/ofac.js')
+  const f = parseOfacLine('306,"PUTIN, Vladimir Vladimirovich","individual","-0-"')
+  assert.strictEqual(f[0], '306')
+  assert.strictEqual(f[1], 'PUTIN, Vladimir Vladimirovich')
+  assert.strictEqual(f[3], null)
+})
+
+await test('buildSdnIndex links strong aliases by ent_num', async () => {
+  const { buildSdnIndex } = await import('../src/ofac.js')
+  const sdn = '306,"PUTIN, Vladimir Vladimirovich","individual","RUSSIA-EO14024"'
+  const alt = '306,2,"aka","PUTIN, Vladimir","-0-"\n306,3,"aka","POUTINE, Vladimir","-0-"'
+  const idx = buildSdnIndex(sdn, alt)
+  assert.strictEqual(idx.length, 1)
+  assert.strictEqual(idx[0].aliases.length, 2)
+})
+
+await test('similarity scores word-order / middle-name variants high', async () => {
+  const { similarity } = await import('../src/ofac.js')
+  assert.ok(similarity('Vladimir Putin', 'PUTIN, Vladimir Vladimirovich') >= 0.85)
+  assert.ok(similarity('vladimir putin', 'PUTIN, Vladimir') >= 0.85)
+})
+
+await test('similarity scores unrelated names low (false-positive control)', async () => {
+  const { similarity } = await import('../src/ofac.js')
+  assert.ok(similarity('John Smith', 'PUTIN, Vladimir Vladimirovich') < 0.5)
+  assert.ok(similarity('Jane Doe', 'AL-ZAWAHIRI, Ayman') < 0.5)
+})
+
+await test('screenNameAgainstIndex hits sanctioned, misses clean, catches alias', async () => {
+  const { buildSdnIndex, screenNameAgainstIndex } = await import('../src/ofac.js')
+  const sdn =
+    '306,"PUTIN, Vladimir Vladimirovich","individual","RUSSIA-EO14024"\n' +
+    '7522,"AL-ZAWAHIRI, Ayman","individual","SDGT"'
+  const alt = '306,3,"aka","POUTINE, Vladimir","-0-"'
+  const idx = buildSdnIndex(sdn, alt)
+  assert.strictEqual(screenNameAgainstIndex('Vladimir Putin', idx, 0.85)[0]?.ent_num, 306)
+  const aliasHit = screenNameAgainstIndex('Vladimir Poutine', idx, 0.85)
+  assert.ok(aliasHit.length >= 1 && aliasHit[0].matched_on === 'alias')
+  assert.strictEqual(screenNameAgainstIndex('Jane Doe', idx, 0.85).length, 0)
+})
+
 console.log('\n/diligence total-failure integrity guard:')
 
 await test('both checks failed → treated as total failure (502, not signed 200)', async () => {
