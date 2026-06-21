@@ -361,6 +361,45 @@ app.get('/.well-known/attestation-key', (c) => {
   })
 })
 
+// ---------------------------------------------------------------------
+// Health — a free, unauthenticated liveness/readiness endpoint.
+//
+// Reports whether each upstream data source is currently reachable (using
+// the same cached, circuit-broken checks the payment gates use, so polling
+// this doesn't hammer the providers) and whether response signing is
+// configured. The HTTP status reflects reality: 200 when fully healthy,
+// 503 when any dependency is degraded — so automated monitors that key off
+// the status code behave correctly. No payment, no rate limit.
+// ---------------------------------------------------------------------
+app.get('/health', async (c) => {
+  const [oracleOk, companiesHouseOk] = await Promise.all([
+    chainalysisHealthy().catch(() => false),
+    companiesHouseHealthy().catch(() => false),
+  ])
+  const signingConfigured = attestationEnabled()
+
+  // Upstreams determine readiness. Signing being off is a degraded state for
+  // a compliance tool (results would be unsigned), so we surface it — but we
+  // don't 503 purely on signing, since checks still return correct data.
+  const upstreamsHealthy = oracleOk && companiesHouseOk
+  const status = upstreamsHealthy ? 'ok' : 'degraded'
+
+  if (!upstreamsHealthy) c.header('Retry-After', '30')
+
+  return c.json(
+    {
+      status,
+      checked_at: new Date().toISOString(),
+      upstreams: {
+        sanctions_oracle: oracleOk ? 'reachable' : 'unreachable',
+        companies_house: companiesHouseOk ? 'reachable' : 'unreachable',
+      },
+      attestation: signingConfigured ? 'configured' : 'not_configured',
+    },
+    upstreamsHealthy ? 200 : 503
+  )
+})
+
 app.get('/', (c) =>
   c.json({
     service: config.service.title,
@@ -369,6 +408,7 @@ app.get('/', (c) =>
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
       'GET /diligence?wallet=&company=': `Combined check — $${config.pricing.combinedDiligence}`,
     },
+    health_url: '/health',
     attestation: {
       enabled: attestationEnabled(),
       public_key_url: '/.well-known/attestation-key',
