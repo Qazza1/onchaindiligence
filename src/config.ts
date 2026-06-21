@@ -71,11 +71,12 @@ export const config = {
 
   // --- Service metadata (used in discovery / OpenAPI generation) --------
   service: {
-    title: 'Compliance Diligence Suite',
+    title: 'OnchainDiligence',
     version: '1.0.0',
     description:
       'Pay-per-call sanctions screening and UK company verification, ' +
-      'bundled or standalone, settled via MPP on Tempo.',
+      'bundled or standalone, settled via MPP on Tempo. Every paid response ' +
+      'is a signed attestation you can verify yourself.',
   },
 }
 

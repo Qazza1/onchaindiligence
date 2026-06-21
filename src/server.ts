@@ -35,6 +35,7 @@ import { chainalysisHealthy, companiesHouseHealthy } from './health.js'
 import { logPaymentSuccess, logPaymentFailed } from './paymentLog.js'
 import { attest, attestationEnabled, getPublicKeyPem, getKeyId } from './attestation.js'
 import { isTotalFailure } from './diligence.js'
+import { buildOpenApiSpec } from './openapi.js'
 
 assertConfigured()
 
@@ -326,6 +327,14 @@ function handleUpstreamError(c: any, err: unknown) {
   }
   return c.json({ error: describeError(err) }, 502)
 }
+
+// ---------------------------------------------------------------------
+// OpenAPI — our complete, hand-maintained spec. Registered BEFORE the
+// discovery() helper below so this richer document wins the /openapi.json
+// route (Hono: first match serves). discovery() still wires up the payment
+// challenge behaviour; we just serve a fuller spec than its auto stub.
+// ---------------------------------------------------------------------
+app.get('/openapi.json', (c) => c.json(buildOpenApiSpec()))
 
 // ---------------------------------------------------------------------
 // Discovery — lets agents and registries find this service and its
