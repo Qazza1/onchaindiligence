@@ -70,18 +70,23 @@ export function parseOfacLine(line: string): (string | null)[] {
   const fields: (string | null)[] = []
   let cur = ''
   let inQuotes = false
+  const push = (v: string) => {
+    const trimmed = v.trim()
+    // OFAC pads fields, so the null sentinel can arrive as "-0- " etc.
+    fields.push(trimmed === OFAC_NULL ? null : trimmed)
+  }
   for (let i = 0; i < line.length; i++) {
     const ch = line[i]
     if (ch === '"') {
       inQuotes = !inQuotes
     } else if (ch === ',' && !inQuotes) {
-      fields.push(cur === OFAC_NULL ? null : cur)
+      push(cur)
       cur = ''
     } else {
       cur += ch
     }
   }
-  fields.push(cur === OFAC_NULL ? null : cur)
+  push(cur)
   return fields
 }
 

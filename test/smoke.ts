@@ -334,6 +334,12 @@ await test('parseOfacLine handles quotes and the -0- null sentinel', async () =>
   assert.strictEqual(f[0], '306')
   assert.strictEqual(f[1], 'PUTIN, Vladimir Vladimirovich')
   assert.strictEqual(f[3], null)
+  // Real OFAC data pads fields: the null sentinel can arrive as "-0- ".
+  const g = parseOfacLine('36,"AEROCARIBBEAN AIRLINES",-0- ,"CUBA",-0- ,-0-')
+  assert.strictEqual(g[1], 'AEROCARIBBEAN AIRLINES') // internal space kept
+  assert.strictEqual(g[2], null) // padded "-0- " → null
+  assert.strictEqual(g[3], 'CUBA')
+  assert.strictEqual(g[4], null)
 })
 
 await test('buildSdnIndex links strong aliases by ent_num', async () => {
