@@ -224,6 +224,83 @@ export function buildOpenApiSpec() {
           'x-payment-info': paymentExtension(p.combinedDiligence),
         },
       },
+      '/anchor': {
+        post: {
+          tags: ['Checks'],
+          summary: 'Anchor an attestation on Tempo',
+          description:
+            'Records the keccak256 hash of an attestation signature on the ' +
+            'Tempo AttestationRegistry contract, giving independent, ' +
+            'timestamped, tamper-evident proof that the attestation existed. ' +
+            'Only the hash is stored on-chain — no subject data. Idempotent: ' +
+            're-anchoring an already-anchored attestation sends no new transaction.',
+          operationId: 'anchorAttestation',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['signature'],
+                  properties: {
+                    signature: {
+                      type: 'string',
+                      description: 'The attestation Ed25519 signature (base64url).',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Signed anchoring receipt.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/SignedAnchorResult' },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/BadRequest' },
+            '402': { $ref: '#/components/responses/PaymentRequired' },
+            '502': { $ref: '#/components/responses/UpstreamError' },
+            '503': { $ref: '#/components/responses/Unavailable' },
+          },
+          'x-payment-info': paymentExtension(p.nameScreen),
+        },
+      },
+      '/anchored': {
+        get: {
+          tags: ['Service'],
+          summary: 'Check on-chain anchor status',
+          description:
+            'Free. Reports whether an attestation signature has been anchored ' +
+            'on Tempo, and when. Lets anyone independently verify a record.',
+          operationId: 'anchored',
+          parameters: [
+            {
+              name: 'signature',
+              in: 'query',
+              required: true,
+              description: 'The attestation signature (base64url) to check.',
+              schema: { type: 'string' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Anchor status.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/AnchorStatus' },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/BadRequest' },
+            '404': { description: 'Anchoring not enabled on this deployment.' },
+            '502': { $ref: '#/components/responses/UpstreamError' },
+          },
+        },
+      },
       '/health': {
         get: {
           tags: ['Service'],
@@ -295,6 +372,28 @@ export function buildOpenApiSpec() {
     },
     components: {
       schemas: {
+        AnchorStatus: {
+          type: 'object',
+          properties: {
+            anchor_hash: { type: 'string', description: 'keccak256 of the signature.' },
+            anchored: { type: 'boolean' },
+            anchored_at: { type: 'string', format: 'date-time', nullable: true },
+            chain: { type: 'string', example: 'Tempo' },
+            contract: { type: 'string' },
+          },
+        },
+        SignedAnchorResult: {
+          type: 'object',
+          properties: {
+            anchor_hash: { type: 'string' },
+            tx_hash: { type: 'string', nullable: true },
+            already_anchored: { type: 'boolean' },
+            chain: { type: 'string', example: 'Tempo' },
+            contract: { type: 'string' },
+            note: { type: 'string' },
+            attestation: { $ref: '#/components/schemas/Attestation' },
+          },
+        },
         Attestation: {
           type: 'object',
           description: 'Ed25519 signature over { data, issued_at, key_id }.',

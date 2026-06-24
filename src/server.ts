@@ -37,6 +37,11 @@ import { attest, attestationEnabled, getPublicKeyPem, getKeyId } from './attesta
 import { isTotalFailure } from './diligence.js'
 import { buildOpenApiSpec } from './openapi.js'
 import { screenName, buildOfacAttribution, OfacUpstreamError } from './ofac.js'
+import {
+  anchoringEnabled,
+  anchorSignature,
+  isSignatureAnchored,
+} from './anchor.js'
 
 assertConfigured()
 
@@ -385,6 +390,83 @@ function handleUpstreamError(c: any, err: unknown) {
 }
 
 // ---------------------------------------------------------------------
+// On-chain anchoring (Tempo) — optional, decoupled from paid checks.
+//
+//   POST /anchor       body: { signature }  → records keccak256(signature)
+//                       on the Tempo AttestationRegistry. Paid (gas-backed).
+//   GET  /anchored?signature=...            → free: is this attestation
+//                       anchored on-chain, and when?
+//
+// Anchoring proves a signed attestation existed at a point in time, on a
+// public chain, without revealing any subject data (only a hash is stored).
+// These routes are independent of the compliance checks: a check never waits
+// on the chain, and anchoring only happens when explicitly requested.
+// ---------------------------------------------------------------------
+app.get('/anchored', async (c) => {
+  if (!anchoringEnabled() && !config.anchor.contractAddress) {
+    return c.json({ error: 'on-chain anchoring is not enabled on this deployment' }, 404)
+  }
+  const signature = c.req.query('signature')
+  if (!signature || signature.length < 16) {
+    return c.json({ error: 'provide ?signature= (the attestation signature, base64url)' }, 400)
+  }
+  try {
+    const result = await isSignatureAnchored(signature)
+    return c.json({
+      anchor_hash: result.anchorHash,
+      anchored: result.anchored,
+      anchored_at: result.anchoredAt
+        ? new Date(result.anchoredAt * 1000).toISOString()
+        : null,
+      chain: 'Tempo',
+      contract: config.anchor.contractAddress,
+    })
+  } catch (err) {
+    return c.json({ error: describeError(err) }, 502)
+  }
+})
+
+app.post(
+  '/anchor',
+  rateLimit,
+  mppx.charge({ amount: config.pricing.nameScreen }),
+  async (c) => {
+    if (!anchoringEnabled()) {
+      return c.json(
+        { error: 'on-chain anchoring is not configured on this deployment' },
+        503
+      )
+    }
+    let body: { signature?: string }
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'expected JSON body with a "signature" field' }, 400)
+    }
+    if (!body.signature || body.signature.length < 16) {
+      return c.json({ error: 'provide the attestation "signature" (base64url) to anchor' }, 400)
+    }
+    try {
+      const { anchorHash, txHash, alreadyAnchored } = await anchorSignature(body.signature)
+      return c.json(
+        attest({
+          anchor_hash: anchorHash,
+          tx_hash: alreadyAnchored ? null : txHash,
+          already_anchored: alreadyAnchored,
+          chain: 'Tempo',
+          contract: config.anchor.contractAddress,
+          note: alreadyAnchored
+            ? 'This attestation was already anchored on-chain; no new transaction was sent.'
+            : 'Attestation hash anchored on Tempo. Anyone can verify it via GET /anchored.',
+        })
+      )
+    } catch (err) {
+      return c.json({ error: describeError(err) }, 502)
+    }
+  }
+)
+
+// ---------------------------------------------------------------------
 // OpenAPI — our complete, hand-maintained spec. Registered BEFORE the
 // discovery() helper below so this richer document wins the /openapi.json
 // route (Hono: first match serves). discovery() still wires up the payment
@@ -472,6 +554,8 @@ app.get('/', (c) =>
       'GET /screen/:address': `Sanctions check only — $${config.pricing.sanctionsCheck}`,
       'GET /screen-name?name=': `OFAC SDN name screening — $${config.pricing.nameScreen}`,
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
+      'POST /anchor': `Anchor an attestation on Tempo — $${config.pricing.nameScreen}`,
+      'GET /anchored?signature=': 'Check if an attestation is anchored on-chain — free',
       'GET /diligence?wallet=&company=': `Combined check — $${config.pricing.combinedDiligence}`,
     },
     health_url: '/health',

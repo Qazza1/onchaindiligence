@@ -77,6 +77,17 @@ export const config = {
     altUrl: process.env.OFAC_ALT_URL || 'https://www.treasury.gov/ofac/downloads/alt.csv',
   },
 
+  // --- On-chain attestation anchoring (Tempo) ----------------------------
+  // Optional. When configured, attestation hashes can be anchored on Tempo for
+  // independent, tamper-evident proof. Anchoring never blocks a paid check.
+  anchor: {
+    rpcUrl: process.env.ANCHOR_RPC_URL || 'https://rpc.moderato.tempo.xyz',
+    chainId: Number(process.env.ANCHOR_CHAIN_ID || '42431'), // Moderato testnet
+    contractAddress: (process.env.ANCHOR_CONTRACT_ADDRESS || '') as `0x${string}` | '',
+    // Separate key from the attestation signing key; pays Tempo gas (pathUSD).
+    privateKey: (process.env.ANCHOR_PRIVATE_KEY || '') as `0x${string}` | '',
+  },
+
   // --- Service metadata (used in discovery / OpenAPI generation) --------
   service: {
     title: 'OnchainDiligence',
