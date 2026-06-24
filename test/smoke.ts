@@ -326,6 +326,24 @@ await test('disabled when no key configured (graceful, not signed)', async () =>
   assert.strictEqual(envelope.attestation.signed, false)
 })
 
+console.log('\nENS resolution:')
+
+await test('looksLikeEns distinguishes names from addresses', async () => {
+  const { looksLikeEns } = await import('../src/ens.js')
+  assert.strictEqual(looksLikeEns('0x7f268357A8c2552623316e2562D90e642bB538E5'), false)
+  assert.strictEqual(looksLikeEns('vitalik.eth'), true)
+  assert.strictEqual(looksLikeEns('hello'), false)
+  assert.strictEqual(looksLikeEns(' vitalik.eth '), true)
+})
+
+await test('resolveToAddress passes a hex address through unchanged', async () => {
+  const { resolveToAddress } = await import('../src/ens.js')
+  const addr = '0x7f268357A8c2552623316e2562D90e642bB538E5'
+  const r = await resolveToAddress(addr)
+  assert.strictEqual(r.address, addr)
+  assert.strictEqual(r.ens, null)
+})
+
 console.log('\nOFAC SDN name screening:')
 
 await test('parseOfacLine handles quotes and the -0- null sentinel', async () => {

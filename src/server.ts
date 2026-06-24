@@ -42,6 +42,7 @@ import {
   anchorSignature,
   isSignatureAnchored,
 } from './anchor.js'
+import { resolveToAddress, EnsResolutionError } from './ens.js'
 
 assertConfigured()
 
@@ -136,22 +137,29 @@ app.get(
   healthGate(chainalysisHealthy, 'Chainalysis'),
   mppx.charge({ amount: config.pricing.sanctionsCheck }),
   async (c) => {
-    const address = c.req.param('address')
+    const input = c.req.param('address')
 
-    if (!address || address.length < 10) {
-      return c.json({ error: 'invalid address parameter' }, 400)
+    if (!input || input.length < 7) {
+      return c.json({ error: 'invalid address or ENS name parameter' }, 400)
     }
 
     try {
+      // Accept an ENS name (e.g. vitalik.eth) or a hex address. Resolve first
+      // so the caller can screen a human-readable name; we surface both.
+      const { address, ens } = await resolveToAddress(input)
       const result = await screenAddress(address)
       return c.json(
         attest({
           ...result,
+          ...(ens ? { ens_name: ens, resolved_address: address } : {}),
           ...chainalysisAttribution(),
           checked_at: new Date().toISOString(),
         })
       )
     } catch (err) {
+      if (err instanceof EnsResolutionError) {
+        return c.json({ error: err.message }, 400)
+      }
       return handleUpstreamError(c, err)
     }
   }
@@ -299,7 +307,12 @@ app.get(
 
     // Run both lookups concurrently rather than sequentially.
     const [walletOutcome, companyOutcome] = await Promise.all([
-      wallet ? settleSafely(() => screenAddress(wallet)) : Promise.resolve(null),
+      wallet
+        ? settleSafely(async () => {
+            const { address } = await resolveToAddress(wallet)
+            return screenAddress(address)
+          })
+        : Promise.resolve(null),
       companyNumber ? settleSafely(() => checkCompany(companyNumber)) : Promise.resolve(null),
     ])
 
