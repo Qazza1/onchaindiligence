@@ -39,11 +39,15 @@ export const config = {
   // Each price is deliberately small and framed as covering infra/API
   // cost, not as a markup on the underlying public-good or open-government
   // data. See README.md "Licensing & pricing rationale" for the reasoning.
+  // Prices differ by value delivered and cost to serve, not a flat rate.
+  // The wallet check is a single cheap oracle read (commodity, high volume);
+  // the company check returns a structured corporate record (higher value,
+  // lower volume); name screening parses and fuzzy-matches the full OFAC list.
   pricing: {
-    sanctionsCheck: '0.01',
-    companyCheck: '0.01',
-    combinedDiligence: '0.015', // slight discount vs. running both separately
-    nameScreen: '0.01',
+    sanctionsCheck: '0.01', // one on-chain oracle read — cheap, agent-friendly
+    nameScreen: '0.02', // parses + fuzzy-matches the full OFAC SDN list
+    companyCheck: '0.05', // structured KYB record (status + ownership/PSC)
+    combinedDiligence: '0.05', // wallet + company together — a discount vs. $0.06 apart
   },
 
   // --- Sanctions oracle (on-chain, no API key) --------------------------
