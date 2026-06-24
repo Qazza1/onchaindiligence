@@ -15,14 +15,32 @@ This API answers narrow factual questions and is deliberately honest about their
 | Endpoint | Checks | Price |
 |----------|--------|-------|
 | `GET /screen/:address` | Is this wallet on a sanctions list? (Chainalysis on-chain oracle, US/EU/UN.) Address in, yes/no + details out. Says nothing about who owns it. | $0.01 |
-| `GET /screen-name?name=` | Is this person or company on the OFAC SDN list? Fuzzy name match against primary names + strong aliases, with confidence scores. Returns candidate matches, not a verdict. | $0.01 |
-| `GET /company/:companyNumber` | UK company status, profile, and PSC data (People with Significant Control — who actually owns/controls it). Says nothing about crypto. | $0.01 |
-| `GET /diligence?wallet=&company=` | Wallet + company checks in parallel. | $0.015 |
+| `GET /screen-name?name=` | Is this person or company on the OFAC SDN list? Fuzzy name match against primary names + strong aliases, with confidence scores. Returns candidate matches, not a verdict. | $0.02 |
+| `GET /company/:companyNumber` | UK company status, profile, and PSC data (People with Significant Control — who actually owns/controls it). Says nothing about crypto. | $0.05 |
+| `GET /diligence?wallet=&company=` | Wallet + company checks in parallel. | $0.05 |
 | `POST /anchor` | Anchor an attestation's hash on Tempo for immutable, timestamped proof. | $0.01 |
 
 **The critical limitation of the combined check:** `/diligence` runs the two checks independently and returns both — it does **not** establish any link between the wallet and the company. The response says so explicitly. Drawing a connection between them is the caller's judgement, not a claim this API makes.
 
 Free endpoints (no payment): `GET /` (service info), `GET /health` (upstream + signing status), `GET /openapi.json` (machine-readable discovery), and `GET /anchored?signature=` (check whether an attestation is anchored on-chain).
+
+## Pricing & access model
+
+Prices are differentiated by value delivered and cost to serve, not a flat rate:
+
+| Check | Price | Why |
+|-------|-------|-----|
+| Wallet sanctions (`/screen`) | $0.01 | One on-chain oracle read — a commodity, high-volume call agents make before transfers. |
+| OFAC name screen (`/screen-name`) | $0.02 | Parses and fuzzy-matches the full OFAC SDN list. |
+| UK company / KYB (`/company`) | $0.05 | Returns a structured corporate record (status + ownership). Higher value, lower volume. |
+| Combined diligence (`/diligence`) | $0.05 | Wallet + company together — a discount vs. $0.06 apart. |
+| Anchor (`/anchor`) | $0.01 | An on-chain write on Tempo. |
+
+**Two access models, by design.** The pay-per-call 402 model fits agents, indie developers, and bursty workloads — no account, no commitment. A standing enterprise integration with predictable monthly budgets and SLAs is a different shape: that would be a prepaid, API-key tier (e.g. a monthly USDC subscription granting a call allowance), layered on top of the same checks. The per-call rail is built and live; the subscription rail is a planned addition, not yet implemented. The architecture supports both because the checks, signing, and attestation are independent of how a call is paid for.
+
+**What it deliberately does *not* sell.** There is no premium "risk score" or "wallet exposure history" tier. Those require proprietary attribution data this service does not have and would not honestly possess from free public sources. Selling a risk score we can't substantiate would be exactly the wrong move for a compliance tool — so the product stays within what its data can actually support.
+
+
 
 ## Signed attestations
 
