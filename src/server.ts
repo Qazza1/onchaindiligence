@@ -54,7 +54,7 @@ const app = new Hono()
 // the website; overridable via env for local dev. The 402/MPP payment headers
 // must be exposed so the browser client can read the challenge.
 const WEB_ORIGINS = (process.env.WEB_ALLOWED_ORIGINS ||
-  'https://onchaindiligence.com,https://www.onchaindiligence.com')
+  'https://onchaindiligence.com,https://www.onchaindiligence.com,http://localhost:8000,http://localhost:3000')
   .split(',')
   .map((s) => s.trim())
 app.use(
