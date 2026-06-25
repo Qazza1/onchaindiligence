@@ -48,6 +48,11 @@ export const config = {
     nameScreen: '0.02', // parses + fuzzy-matches the full OFAC SDN list
     companyCheck: '0.05', // structured KYB record (status + ownership/PSC)
     combinedDiligence: '0.05', // wallet + company together — a discount vs. $0.06 apart
+    // Premium "instant web check" tier — the convenience layer the website
+    // widget uses. Same checks, priced for one-off human use rather than
+    // high-volume agents. Not a different service; a different channel.
+    webSanctionsCheck: '0.10',
+    webCompanyCheck: '0.50',
   },
 
   // --- Sanctions oracle (on-chain, no API key) --------------------------

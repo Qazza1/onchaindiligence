@@ -16,6 +16,7 @@
 
 import { Hono } from 'hono'
 import type { MiddlewareHandler } from 'hono'
+import { cors } from 'hono/cors'
 import { Mppx, tempo, discovery } from 'mppx/hono'
 import { config, assertConfigured } from './config.js'
 import {
@@ -47,6 +48,25 @@ import { resolveToAddress, EnsResolutionError } from './ens.js'
 assertConfigured()
 
 const app = new Hono()
+
+// CORS for the browser "instant web check" widget. Scoped to the /web/* routes
+// so the rest of the API stays same-origin/agent-facing. Allowed origins are
+// the website; overridable via env for local dev. The 402/MPP payment headers
+// must be exposed so the browser client can read the challenge.
+const WEB_ORIGINS = (process.env.WEB_ALLOWED_ORIGINS ||
+  'https://onchaindiligence.com,https://www.onchaindiligence.com')
+  .split(',')
+  .map((s) => s.trim())
+app.use(
+  '/web/*',
+  cors({
+    origin: WEB_ORIGINS,
+    allowMethods: ['GET', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+    exposeHeaders: ['WWW-Authenticate', 'Authorization'],
+    maxAge: 86400,
+  })
+)
 
 const mppx = Mppx.create({
   // Root-of-trust for challenge binding. MUST be set via env on mainnet;
@@ -360,6 +380,71 @@ app.get(
       'established by this data, regardless of the individual results above.'
 
     return c.json(attest(response))
+  }
+)
+
+// ---------------------------------------------------------------------
+// Web tier: the "instant check" convenience layer the website widget uses.
+//
+// Same checks, same signed attestations — priced for one-off human use via a
+// browser wallet rather than high-volume agents. This is a pricing CHANNEL,
+// not a different or better service: agents can still use the cheap endpoints
+// above. CORS is enabled (scoped to /web/*) so the browser can call these.
+// The response carries tier: 'web' so it's transparent which rate applied.
+// ---------------------------------------------------------------------
+app.get(
+  '/web/screen/:address',
+  rateLimit,
+  mppx.charge({ amount: config.pricing.webSanctionsCheck }),
+  async (c) => {
+    const input = c.req.param('address')
+    if (!input || input.length < 7) {
+      return c.json({ error: 'invalid address or ENS name parameter' }, 400)
+    }
+    try {
+      const { address, ens } = await resolveToAddress(input)
+      const result = await screenAddress(address)
+      return c.json(
+        attest({
+          ...result,
+          ...(ens ? { ens_name: ens, resolved_address: address } : {}),
+          ...chainalysisAttribution(),
+          tier: 'web',
+          checked_at: new Date().toISOString(),
+        })
+      )
+    } catch (err) {
+      if (err instanceof EnsResolutionError) {
+        return c.json({ error: err.message }, 400)
+      }
+      return handleUpstreamError(c, err)
+    }
+  }
+)
+
+app.get(
+  '/web/company/:companyNumber',
+  rateLimit,
+  healthGate(companiesHouseHealthy, 'Companies House'),
+  mppx.charge({ amount: config.pricing.webCompanyCheck }),
+  async (c) => {
+    const companyNumber = c.req.param('companyNumber')
+    if (!companyNumber) {
+      return c.json({ error: 'companyNumber parameter is required' }, 400)
+    }
+    try {
+      const result = await checkCompany(companyNumber)
+      return c.json(
+        attest({
+          ...result,
+          ...companiesHouseAttribution(),
+          tier: 'web',
+          checked_at: new Date().toISOString(),
+        })
+      )
+    } catch (err) {
+      return handleUpstreamError(c, err)
+    }
   }
 )
 
