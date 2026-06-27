@@ -178,6 +178,46 @@ export function buildOpenApiSpec() {
           'x-payment-info': paymentExtension(p.companyCheck),
         },
       },
+      '/us-company': {
+        get: {
+          tags: ['Checks'],
+          summary: 'Verify a US public company (SEC EDGAR)',
+          description:
+            'Looks up an SEC-registered (public) US company via EDGAR by ' +
+            'ticker, CIK, or name: registered name, CIK, industry (SIC), ' +
+            'state of incorporation, exchanges/tickers, business address, and ' +
+            'most recent filing. Scope is public companies and funds only — ' +
+            'private US companies register at the state level and are not in ' +
+            'EDGAR; the result carries an explicit coverage note.',
+          operationId: 'verifyUsCompany',
+          parameters: [
+            {
+              name: 'q',
+              in: 'query',
+              required: true,
+              description: 'US public company ticker, SEC CIK, or company name.',
+              schema: { type: 'string', minLength: 1 },
+              example: 'AAPL',
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Signed US company result.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/SignedUsCompanyResult' },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/BadRequest' },
+            '402': { $ref: '#/components/responses/PaymentRequired' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '502': { $ref: '#/components/responses/UpstreamError' },
+            '503': { $ref: '#/components/responses/Unavailable' },
+          },
+          'x-payment-info': paymentExtension(p.usCompanyCheck),
+        },
+      },
       '/diligence': {
         get: {
           tags: ['Checks'],
@@ -476,6 +516,38 @@ export function buildOpenApiSpec() {
             },
           ],
         },
+        UsCompanyData: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', example: 'SEC EDGAR' },
+            cik: { type: 'string', example: '0000320193' },
+            name: { type: 'string', nullable: true, example: 'Apple Inc.' },
+            former_names: { type: 'array', items: { type: 'string' } },
+            entity_type: { type: 'string', nullable: true },
+            sic: { type: 'string', nullable: true, example: '3571' },
+            sic_description: { type: 'string', nullable: true, example: 'Electronic Computers' },
+            state_of_incorporation: { type: 'string', nullable: true, example: 'CA' },
+            tickers: { type: 'array', items: { type: 'string' } },
+            exchanges: { type: 'array', items: { type: 'string' } },
+            business_address: { type: 'object', nullable: true },
+            latest_filing: { type: 'object', nullable: true },
+            coverage_note: {
+              type: 'string',
+              description:
+                'Always present. States that EDGAR covers SEC-registered ' +
+                '(public) companies only, so "not found" is not "does not exist".',
+            },
+          },
+        },
+        SignedUsCompanyResult: {
+          allOf: [
+            { $ref: '#/components/schemas/UsCompanyData' },
+            {
+              type: 'object',
+              properties: { attestation: { $ref: '#/components/schemas/Attestation' } },
+            },
+          ],
+        },
         SignedDiligenceResult: {
           type: 'object',
           properties: {
@@ -501,6 +573,7 @@ export function buildOpenApiSpec() {
               properties: {
                 sanctions_oracle: { type: 'string', enum: ['reachable', 'unreachable'] },
                 companies_house: { type: 'string', enum: ['reachable', 'unreachable'] },
+                sec_edgar: { type: 'string', enum: ['reachable', 'unreachable'] },
               },
             },
             attestation: { type: 'string', enum: ['configured', 'not_configured'] },

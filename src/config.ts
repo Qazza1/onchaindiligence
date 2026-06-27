@@ -47,12 +47,14 @@ export const config = {
     sanctionsCheck: '0.01', // one on-chain oracle read — cheap, agent-friendly
     nameScreen: '0.02', // parses + fuzzy-matches the full OFAC SDN list
     companyCheck: '0.05', // structured KYB record (status + ownership/PSC)
+    usCompanyCheck: '0.05', // SEC EDGAR public-company record (same value as UK)
     combinedDiligence: '0.05', // wallet + company together — a discount vs. $0.06 apart
     // Premium "instant web check" tier — the convenience layer the website
     // widget uses. Same checks, priced for one-off human use rather than
     // high-volume agents. Not a different service; a different channel.
     webSanctionsCheck: '0.10',
     webCompanyCheck: '0.50',
+    webUsCompanyCheck: '0.50',
   },
 
   // --- Sanctions oracle (on-chain, no API key) --------------------------
@@ -84,6 +86,16 @@ export const config = {
   ofac: {
     sdnUrl: process.env.OFAC_SDN_URL || 'https://www.treasury.gov/ofac/downloads/sdn.csv',
     altUrl: process.env.OFAC_ALT_URL || 'https://www.treasury.gov/ofac/downloads/alt.csv',
+  },
+
+  // --- SEC EDGAR (free US public-company data, no API key) --------------
+  // SEC requires a descriptive User-Agent with contact info on every request.
+  // Public-domain data; covers SEC-registered (public) companies only — NOT
+  // private US companies (those register at the state level).
+  edgar: {
+    userAgent:
+      process.env.EDGAR_USER_AGENT ||
+      'OnchainDiligence/1.0 (support@onchaindiligence.com)',
   },
 
   // --- On-chain attestation anchoring (Tempo) ----------------------------

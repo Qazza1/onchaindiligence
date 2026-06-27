@@ -199,3 +199,17 @@ export function companiesHouseHealthy(): Promise<boolean> {
     { Authorization: auth }
   )
 }
+
+/**
+ * Is SEC EDGAR reachable right now? (cached, circuit-broken)
+ * Probes a small known submissions record (Apple, CIK 0000320193). SEC requires
+ * a descriptive User-Agent on every request, so we send the configured one —
+ * without it SEC returns 403, which would look like an outage.
+ */
+export function edgarHealthy(): Promise<boolean> {
+  return getHealth(
+    'sec-edgar',
+    'https://data.sec.gov/submissions/CIK0000320193.json',
+    { 'User-Agent': config.edgar.userAgent }
+  )
+}

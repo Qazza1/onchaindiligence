@@ -32,12 +32,17 @@ import {
   CompaniesHouseUpstreamError,
 } from './companiesHouse.js'
 import { createRateLimiter, callerKeyFromHeaders } from './rateLimit.js'
-import { chainalysisHealthy, companiesHouseHealthy } from './health.js'
+import { chainalysisHealthy, companiesHouseHealthy, edgarHealthy } from './health.js'
 import { logPaymentSuccess, logPaymentFailed } from './paymentLog.js'
 import { attest, attestationEnabled, getPublicKeyPem, getKeyId } from './attestation.js'
 import { isTotalFailure } from './diligence.js'
 import { buildOpenApiSpec } from './openapi.js'
 import { screenName, buildOfacAttribution, OfacUpstreamError } from './ofac.js'
+import {
+  checkUSCompany,
+  buildAttribution as edgarAttribution,
+  USCompanyNotFoundError,
+} from './secEdgar.js'
 import {
   anchoringEnabled,
   anchorSignature,
@@ -259,6 +264,47 @@ app.get(
         })
       )
     } catch (err) {
+      return handleUpstreamError(c, err)
+    }
+  }
+)
+
+// ---------------------------------------------------------------------
+// Route 2b: US public-company check only (SEC EDGAR)
+//
+// GET /us-company?q=AAPL   (also accepts a CIK like 0000320193 or a name)
+//
+// Looks up an SEC-registered (PUBLIC) company via EDGAR. Scope is public
+// companies and funds only — private US companies register at the state
+// level and are not in EDGAR; the result carries an explicit coverage note.
+// ---------------------------------------------------------------------
+app.get(
+  '/us-company',
+  rateLimit,
+  healthGate(edgarHealthy, 'SEC EDGAR'),
+  mppx.charge({ amount: config.pricing.usCompanyCheck }),
+  async (c) => {
+    const q = c.req.query('q')
+    if (!q || q.trim().length < 1) {
+      return c.json(
+        { error: 'provide ?q= with a ticker, SEC CIK, or company name' },
+        400
+      )
+    }
+
+    try {
+      const result = await checkUSCompany(q)
+      return c.json(
+        attest({
+          ...result,
+          ...edgarAttribution(),
+          checked_at: new Date().toISOString(),
+        })
+      )
+    } catch (err) {
+      if (err instanceof USCompanyNotFoundError) {
+        return c.json({ error: err.message }, 404)
+      }
       return handleUpstreamError(c, err)
     }
   }
@@ -617,16 +663,17 @@ app.get('/.well-known/attestation-key', (c) => {
 // the status code behave correctly. No payment, no rate limit.
 // ---------------------------------------------------------------------
 app.get('/health', async (c) => {
-  const [oracleOk, companiesHouseOk] = await Promise.all([
+  const [oracleOk, companiesHouseOk, edgarOk] = await Promise.all([
     chainalysisHealthy().catch(() => false),
     companiesHouseHealthy().catch(() => false),
+    edgarHealthy().catch(() => false),
   ])
   const signingConfigured = attestationEnabled()
 
   // Upstreams determine readiness. Signing being off is a degraded state for
   // a compliance tool (results would be unsigned), so we surface it — but we
   // don't 503 purely on signing, since checks still return correct data.
-  const upstreamsHealthy = oracleOk && companiesHouseOk
+  const upstreamsHealthy = oracleOk && companiesHouseOk && edgarOk
   const status = upstreamsHealthy ? 'ok' : 'degraded'
 
   if (!upstreamsHealthy) c.header('Retry-After', '30')
@@ -638,6 +685,7 @@ app.get('/health', async (c) => {
       upstreams: {
         sanctions_oracle: oracleOk ? 'reachable' : 'unreachable',
         companies_house: companiesHouseOk ? 'reachable' : 'unreachable',
+        sec_edgar: edgarOk ? 'reachable' : 'unreachable',
       },
       attestation: signingConfigured ? 'configured' : 'not_configured',
     },
@@ -652,6 +700,7 @@ app.get('/', (c) =>
       'GET /screen/:address': `Sanctions check only — $${config.pricing.sanctionsCheck}`,
       'GET /screen-name?name=': `OFAC SDN name screening — $${config.pricing.nameScreen}`,
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
+      'GET /us-company?q=': `US public company check (SEC EDGAR) — $${config.pricing.usCompanyCheck}`,
       'POST /anchor': `Anchor an attestation on Tempo — $${config.pricing.nameScreen}`,
       'GET /anchored?signature=': 'Check if an attestation is anchored on-chain — free',
       'GET /diligence?wallet=&company=': `Combined check — $${config.pricing.combinedDiligence}`,
