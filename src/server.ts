@@ -528,6 +528,35 @@ app.get(
   }
 )
 
+app.get(
+  '/web/us-company',
+  rateLimit,
+  healthGate(edgarHealthy, 'SEC EDGAR'),
+  mppx.charge({ amount: config.pricing.webUsCompanyCheck }),
+  async (c) => {
+    const q = c.req.query('q')
+    if (!q || q.trim().length < 1) {
+      return c.json({ error: 'provide ?q= with a ticker, SEC CIK, or company name' }, 400)
+    }
+    try {
+      const result = await checkUSCompany(q)
+      return c.json(
+        attest({
+          ...result,
+          ...edgarAttribution(),
+          tier: 'web',
+          checked_at: new Date().toISOString(),
+        })
+      )
+    } catch (err) {
+      if (err instanceof USCompanyNotFoundError) {
+        return c.json({ error: err.message }, 404)
+      }
+      return handleUpstreamError(c, err)
+    }
+  }
+)
+
 // ---------------------------------------------------------------------
 // Shared error handling
 // ---------------------------------------------------------------------
