@@ -53,6 +53,7 @@ export const config = {
     // widget uses. Same checks, priced for one-off human use rather than
     // high-volume agents. Not a different service; a different channel.
     webSanctionsCheck: '0.10',
+    webNameScreen: '0.20',
     webCompanyCheck: '0.50',
     webUsCompanyCheck: '0.50',
   },

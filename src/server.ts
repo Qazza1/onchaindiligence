@@ -494,6 +494,40 @@ app.get(
   }
 )
 
+app.get(
+  '/web/screen-name',
+  rateLimit,
+  mppx.charge({ amount: config.pricing.webNameScreen }),
+  async (c) => {
+    const name = c.req.query('name')
+    if (!name || name.trim().length < 2) {
+      return c.json({ error: 'provide ?name= with at least 2 characters' }, 400)
+    }
+    let threshold = 0.85
+    const t = c.req.query('threshold')
+    if (t !== undefined) {
+      const parsed = Number(t)
+      if (!Number.isFinite(parsed) || parsed < 0.5 || parsed > 1) {
+        return c.json({ error: 'threshold must be a number between 0.5 and 1.0' }, 400)
+      }
+      threshold = parsed
+    }
+    try {
+      const result = await screenName(name, threshold)
+      return c.json(
+        attest({
+          ...result,
+          ...buildOfacAttribution(),
+          tier: 'web',
+          checked_at: new Date().toISOString(),
+        })
+      )
+    } catch (err) {
+      return handleUpstreamError(c, err)
+    }
+  }
+)
+
 // ---------------------------------------------------------------------
 // Shared error handling
 // ---------------------------------------------------------------------
