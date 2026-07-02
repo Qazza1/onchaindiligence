@@ -59,7 +59,7 @@ const app = new Hono()
 // the website; overridable via env for local dev. The 402/MPP payment headers
 // must be exposed so the browser client can read the challenge.
 const WEB_ORIGINS = (process.env.WEB_ALLOWED_ORIGINS ||
-  'https://onchaindiligence.com,https://www.onchaindiligence.com,http://localhost:8000,http://localhost:3000')
+  'https://onchaindiligence.com,https://www.onchaindiligence.com')
   .split(',')
   .map((s) => s.trim())
 app.use(
@@ -71,6 +71,21 @@ app.use(
     exposeHeaders: ['WWW-Authenticate', 'Authorization'],
     maxAge: 86400,
   })
+)
+
+// Public transparency endpoints: /health and the published attestation key.
+// These are unauthenticated, read-only, no-secret reads that are *meant* to be
+// fetched from anywhere — the status page reads /health cross-origin, and any
+// verifier fetching the public key to check an attestation may call from its
+// own origin. So they're readable from any origin (unlike /web/*, which is
+// scoped to the site). Nothing sensitive is exposed by opening these.
+app.use(
+  '/health',
+  cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
+)
+app.use(
+  '/.well-known/attestation-key',
+  cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
 )
 
 const mppx = Mppx.create({
