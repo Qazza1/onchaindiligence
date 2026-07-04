@@ -38,6 +38,7 @@ import { attest, attestationEnabled, getPublicKeyPem, getKeyId } from './attesta
 import { isTotalFailure } from './diligence.js'
 import { buildOpenApiSpec } from './openapi.js'
 import { screenName, buildOfacAttribution, OfacUpstreamError } from './ofac.js'
+import { isSandboxVector, sandboxScreen, listVectors } from './sandbox.js'
 import {
   checkUSCompany,
   buildAttribution as edgarAttribution,
@@ -85,6 +86,16 @@ app.use(
 )
 app.use(
   '/.well-known/attestation-key',
+  cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
+)
+// Sandbox is free, read-only test data — safe to read from any origin so
+// integrators can build against it from the browser and CI.
+app.use(
+  '/sandbox/*',
+  cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
+)
+app.use(
+  '/sandbox',
   cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
 )
 
@@ -206,8 +217,55 @@ app.get(
 )
 
 // ---------------------------------------------------------------------
-// Route 1b: OFAC SDN name screening
+// Route 1-sandbox: TEST MODE screening — free, no upstream, no payment.
 //
+// Lets integrators build and CI-test the full flow (including a positive
+// sanctions hit) without paying or touching the live oracle. Only documented
+// test-vector addresses work; a real address is refused so nobody screens a
+// real counterparty against fake data. Every response is loudly flagged and
+// UNSIGNED so it can never be mistaken for a real determination.
+//   GET /sandbox/screen/:address   (also /sandbox to list vectors)
+// ---------------------------------------------------------------------
+app.get('/sandbox', rateLimit, (c) => {
+  return c.json({
+    sandbox: true,
+    what: 'Test mode. Screen documented test-vector addresses for free, with no payment and no upstream call, to build and CI-test your integration — including a positive sanctions hit.',
+    usage: 'GET /sandbox/screen/:address using one of the test vectors below.',
+    important:
+      'Sandbox responses are test data only: unsigned, flagged sandbox:true, and never a real determination. Real addresses are refused here — use the production /screen endpoint for real screening.',
+    test_vectors: listVectors(),
+  })
+})
+
+app.get('/sandbox/screen/:address', rateLimit, (c) => {
+  const input = c.req.param('address')
+
+  if (!input || input.length < 7) {
+    return c.json({ error: 'invalid address parameter', sandbox: true }, 400)
+  }
+
+  // Only documented test vectors are allowed in sandbox. A real address is
+  // refused — so nobody accidentally screens a real counterparty against fake
+  // data and trusts the answer.
+  if (!isSandboxVector(input)) {
+    return c.json(
+      {
+        error: 'not a sandbox test vector',
+        sandbox: true,
+        detail:
+          'Sandbox only accepts the documented test-vector addresses, so a real ' +
+          'address is never screened against fake data. To screen a real address, ' +
+          'use the production endpoint: GET /screen/:address.',
+        test_vectors: listVectors(),
+      },
+      400
+    )
+  }
+
+  return c.json(sandboxScreen(input))
+})
+
+
 // GET /screen-name?name=Vladimir%20Putin[&threshold=0.85]
 //
 // Fuzzy-matches a person/company name against the official US Treasury OFAC
