@@ -99,6 +99,23 @@ app.use(
   cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
 )
 
+// The investigations app (app.onchaindiligence.com) calls /attest to sign
+// evidence exports with the same attestation key the rest of the API uses, so
+// exports verify through the same /verify page. Scoped to the app origin.
+const APP_ORIGINS = (process.env.APP_ALLOWED_ORIGINS ||
+  'https://app.onchaindiligence.com,http://localhost:5173')
+  .split(',')
+  .map((s) => s.trim())
+app.use(
+  '/attest',
+  cors({
+    origin: APP_ORIGINS,
+    allowMethods: ['POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type'],
+    maxAge: 86400,
+  })
+)
+
 const mppx = Mppx.create({
   // Root-of-trust for challenge binding. MUST be set via env on mainnet;
   // never commit it. See README "Secrets" section.
@@ -631,6 +648,39 @@ app.get(
 )
 
 // ---------------------------------------------------------------------
+// Route: /attest — free attestation endpoint for the app UI
+//
+// Accepts a caller-supplied evidence object and returns it wrapped in a
+// signed Ed25519 attestation envelope (same shape as the paid routes).
+// Free (no MPP gating). CORS is handled by the cors() middleware for
+// '/attest' registered near the top of the file (APP_ORIGINS).
+// ---------------------------------------------------------------------
+app.post('/attest', async (c) => {
+  // CORS is handled by the cors() middleware registered for '/attest' above.
+  if (!attestationEnabled()) {
+    return c.json(
+      { error: 'attestation is not configured on this deployment' },
+      503
+    )
+  }
+  let body: unknown
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'invalid JSON body' }, 400)
+  }
+  const evidence = (body as Record<string, unknown>)?.evidence
+  if (!evidence || typeof evidence !== 'object') {
+    return c.json({ error: 'body must be { "evidence": { ... } }' }, 400)
+  }
+  if (JSON.stringify(evidence).length > 200_000) {
+    return c.json({ error: 'evidence payload too large (max ~200KB)' }, 413)
+  }
+  const signed = attest(evidence as Record<string, unknown>)
+  return c.json(signed, 200)
+})
+
+// ---------------------------------------------------------------------
 // Shared error handling
 // ---------------------------------------------------------------------
 
@@ -837,6 +887,7 @@ app.get('/', (c) =>
       'GET /screen-name?name=': `OFAC SDN name screening — $${config.pricing.nameScreen}`,
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
       'GET /us-company?q=': `US public company check (SEC EDGAR) — $${config.pricing.usCompanyCheck}`,
+      'POST /attest': 'Wrap caller-supplied evidence in a signed attestation — free',
       'POST /anchor': `Anchor an attestation on Tempo — $${config.pricing.nameScreen}`,
       'GET /anchored?signature=': 'Check if an attestation is anchored on-chain — free',
       'GET /diligence?wallet=&company=': `Combined check — $${config.pricing.combinedDiligence}`,
