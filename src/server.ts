@@ -234,6 +234,78 @@ app.get(
 )
 
 // ---------------------------------------------------------------------
+// Route: /verdict/:address — unified, signed PASS / WARN / BLOCK decision.
+//
+// One call → one signed decision, with reasons. The only *signed* verdict in
+// the x402 compliance space. v1 logic is conservative and honest:
+//   BLOCK — sanctioned (hard legal line).  PASS — screened clean.
+//   WARN  — reserved for genuinely-partial signals; with sanctions-only data
+//           there is no honest WARN trigger yet, and any upstream failure
+//           ERRORS rather than returning a false PASS. Richer signals (risk
+//           score, mixer exposure, wallet age, proximity) feed this same
+//           endpoint later with no breaking change; `verdict_basis` discloses
+//           exactly which signals are live so callers never over-trust a thin
+//           PASS. Paid, same tier as /screen (bundles a real screening call).
+// ---------------------------------------------------------------------
+app.get(
+  '/verdict/:address',
+  rateLimit,
+  healthGate(chainalysisHealthy, 'Chainalysis'),
+  mppx.charge({ amount: config.pricing.sanctionsCheck }),
+  async (c) => {
+    const input = c.req.param('address')
+    if (!input || input.length < 7) {
+      return c.json({ error: 'invalid address or ENS name parameter' }, 400)
+    }
+
+    try {
+      const { address, ens } = await resolveToAddress(input)
+      const screen = await screenAddress(address)
+
+      let verdict: 'PASS' | 'WARN' | 'BLOCK'
+      const reasons: string[] = []
+
+      if (screen.sanctioned === true) {
+        verdict = 'BLOCK'
+        reasons.push('Address is on the sanctions list (OFAC via Chainalysis on-chain oracle).')
+      } else {
+        verdict = 'PASS'
+        reasons.push('No sanctions match found.')
+      }
+
+      const signals = {
+        sanctions: { checked: true, sanctioned: screen.sanctioned === true },
+      }
+
+      return c.json(
+        attest({
+          verdict,
+          reasons,
+          address,
+          ...(ens ? { ens_name: ens, resolved_address: address } : {}),
+          signals,
+          verdict_basis: {
+            live_signals: ['sanctions'],
+            not_yet_evaluated: ['risk_score', 'mixer_exposure', 'wallet_age', 'sanctions_proximity'],
+            note:
+              'v1 verdict is sanctions-driven. PASS means no sanctions match — ' +
+              'it is not a full risk clearance. Additional signals will enrich ' +
+              'future verdicts under the same response shape.',
+          },
+          ...chainalysisAttribution(),
+          checked_at: new Date().toISOString(),
+        })
+      )
+    } catch (err) {
+      if (err instanceof EnsResolutionError) {
+        return c.json({ error: err.message }, 400)
+      }
+      return handleUpstreamError(c, err)
+    }
+  }
+)
+
+// ---------------------------------------------------------------------
 // Route 1-sandbox: TEST MODE screening — free, no upstream, no payment.
 //
 // Lets integrators build and CI-test the full flow (including a positive
