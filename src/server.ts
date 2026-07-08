@@ -1,9 +1,10 @@
 /**
  * server.ts
  * ---------
- * Compliance Diligence Suite — three MPP-gated endpoints on Tempo:
+ * Compliance Diligence Suite — MPP-gated endpoints on Tempo:
  *
  *   GET /screen/:address          — sanctions check only  (Chainalysis)
+ *   GET /verdict/:address         — unified signed PASS/BLOCK verdict
  *   GET /company/:companyNumber   — UK company check only (Companies House)
  *   GET /diligence                — both, bundled          (?wallet & ?company)
  *
@@ -956,6 +957,7 @@ app.get('/', (c) =>
     service: config.service.title,
     routes: {
       'GET /screen/:address': `Sanctions check only — $${config.pricing.sanctionsCheck}`,
+      'GET /verdict/:address': `Unified signed PASS/BLOCK counterparty verdict — $${config.pricing.sanctionsCheck}`,
       'GET /screen-name?name=': `OFAC SDN name screening — $${config.pricing.nameScreen}`,
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
       'GET /us-company?q=': `US public company check (SEC EDGAR) — $${config.pricing.usCompanyCheck}`,
