@@ -97,6 +97,49 @@ export function buildOpenApiSpec() {
           'x-payment-info': paymentExtension(p.sanctionsCheck),
         },
       },
+      '/verdict/{address}': {
+        get: {
+          tags: ['Checks'],
+          summary: 'Signed PASS / WARN / BLOCK counterparty verdict',
+          description:
+            'One call, one signed decision. BLOCK means the address itself is ' +
+            'sanctioned. WARN means it is NOT sanctioned but transacted directly ' +
+            'with an address that is - a counterparty risk signal, never a ' +
+            'designation of this address. PASS means neither was found within the ' +
+            'disclosed scope; it is not a full risk clearance. Direct counterparty ' +
+            'exposure is one-hop, Tempo-mainnet-only, and covers a bounded recent ' +
+            'window (see signals.direct_counterparty_exposure.scope). ' +
+            'verdict_basis.live_signals lists the signals that actually ran for ' +
+            'THIS request - a signal that could not be evaluated is reported as ' +
+            'not evaluated, never assumed clean.',
+          operationId: 'getVerdict',
+          parameters: [
+            {
+              name: 'address',
+              in: 'path',
+              required: true,
+              description: 'EVM wallet address (0x + 40 hex) or an ENS name, resolved on Ethereum mainnet before screening.',
+              schema: { type: 'string' },
+              example: '0x7f268357A8c2552623316e2562D90e642bB538E5',
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Signed verdict.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/SignedVerdictResult' },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/BadRequest' },
+            '402': { $ref: '#/components/responses/PaymentRequired' },
+            '502': { $ref: '#/components/responses/UpstreamError' },
+            '503': { $ref: '#/components/responses/Unavailable' },
+          },
+          'x-payment-info': paymentExtension(p.sanctionsCheck),
+        },
+      },
       '/screen-name': {
         get: {
           tags: ['Checks'],
@@ -497,6 +540,77 @@ export function buildOpenApiSpec() {
             source: { type: 'string' },
             checked_at: { type: 'string', format: 'date-time' },
           },
+        },
+        VerdictData: {
+          type: 'object',
+          properties: {
+            verdict: {
+              type: 'string',
+              enum: ['PASS', 'WARN', 'BLOCK'],
+              description:
+                'BLOCK = this address is sanctioned. WARN = not sanctioned, but a ' +
+                'direct counterparty is. PASS = neither found within the disclosed scope.',
+              example: 'PASS',
+            },
+            reasons: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Plain-language basis for the verdict, including any signal that could not be evaluated.',
+            },
+            address: { type: 'string', example: '0x7f268357A8c2552623316e2562D90e642bB538E5' },
+            signals: {
+              type: 'object',
+              properties: {
+                sanctions: {
+                  type: 'object',
+                  properties: {
+                    checked: { type: 'boolean' },
+                    sanctioned: { type: 'boolean' },
+                  },
+                },
+                direct_counterparty_exposure: {
+                  type: 'object',
+                  description:
+                    'One-hop counterparties observed on Tempo mainnet. When checked ' +
+                    'is false the signal did not run; treat it as unknown, not clean.',
+                  properties: {
+                    checked: { type: 'boolean' },
+                    transfers_scanned: { type: 'integer' },
+                    counterparties_found: { type: 'integer' },
+                    counterparties_screened: {
+                      type: 'integer',
+                      description: 'How many were actually verified. A counterparty whose screen failed is not counted here and is never treated as clean.',
+                    },
+                    sanctioned_counterparties: { type: 'array', items: { type: 'string' } },
+                    not_evaluated_reason: { type: 'string' },
+                    scope: { type: 'string', description: 'Explicit limits of this signal.' },
+                  },
+                },
+              },
+            },
+            verdict_basis: {
+              type: 'object',
+              properties: {
+                live_signals: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Signals that actually ran for this request.',
+                },
+                not_yet_evaluated: { type: 'array', items: { type: 'string' } },
+                note: { type: 'string' },
+              },
+            },
+            checked_at: { type: 'string', format: 'date-time' },
+          },
+        },
+        SignedVerdictResult: {
+          allOf: [
+            { $ref: '#/components/schemas/VerdictData' },
+            {
+              type: 'object',
+              properties: { attestation: { $ref: '#/components/schemas/Attestation' } },
+            },
+          ],
         },
         SignedSanctionsResult: {
           allOf: [

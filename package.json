@@ -16,7 +16,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
     "hono": "^4.6.0",
-    "mppx": "latest",
+    "mppx": "^0.7.0",
     "viem": "^2.52.2",
     "zod": "^4.4.3"
   },

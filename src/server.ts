@@ -51,6 +51,7 @@ import {
   isSignatureAnchored,
 } from './anchor.js'
 import { resolveToAddress, EnsResolutionError } from './ens.js'
+import { checkDirectExposure } from './exposure.js'
 
 assertConfigured()
 
@@ -261,7 +262,17 @@ app.get(
 
     try {
       const { address, ens } = await resolveToAddress(input)
-      const screen = await screenAddress(address)
+
+      // The subject's own sanctions status is the primary signal and must
+      // succeed (an error here is thrown, never a false PASS). Direct
+      // counterparty exposure enriches it and never throws — see exposure.ts.
+      const [screen, exposure] = await Promise.all([
+        screenAddress(address),
+        checkDirectExposure(address),
+      ])
+
+      const exposureHit =
+        exposure.evaluated && exposure.sanctioned_counterparties.length > 0
 
       let verdict: 'PASS' | 'WARN' | 'BLOCK'
       const reasons: string[] = []
@@ -269,14 +280,50 @@ app.get(
       if (screen.sanctioned === true) {
         verdict = 'BLOCK'
         reasons.push('Address is on the sanctions list (OFAC via Chainalysis on-chain oracle).')
+      } else if (exposureHit) {
+        // Not a legal prohibition on this address — a risk signal about who it
+        // transacts with. WARN, never BLOCK: we do not designate by association.
+        verdict = 'WARN'
+        const n = exposure.sanctioned_counterparties.length
+        reasons.push(
+          `Address is not itself sanctioned, but transacted directly with ` +
+            `${n} sanctioned address${n === 1 ? '' : 'es'} on Tempo mainnet.`
+        )
+        reasons.push(
+          'This is a counterparty risk signal, not a designation of this address.'
+        )
       } else {
         verdict = 'PASS'
         reasons.push('No sanctions match found.')
+        if (!exposure.evaluated) {
+          reasons.push(
+            'Direct counterparty exposure could NOT be evaluated for this address — ' +
+              'this PASS rests on the sanctions check alone.'
+          )
+        }
       }
 
       const signals = {
         sanctions: { checked: true, sanctioned: screen.sanctioned === true },
+        direct_counterparty_exposure: {
+          checked: exposure.evaluated,
+          ...(exposure.evaluated
+            ? {
+                transfers_scanned: exposure.transfers_scanned,
+                counterparties_found: exposure.counterparties_found,
+                counterparties_screened: exposure.counterparties_screened,
+                sanctioned_counterparties: exposure.sanctioned_counterparties,
+              }
+            : { not_evaluated_reason: exposure.unevaluated_reason }),
+          scope: exposure.scope,
+        },
       }
+
+      // Only claim a signal is live when it actually ran for THIS request.
+      const liveSignals = ['sanctions']
+      const notEvaluated = ['risk_score', 'mixer_exposure', 'wallet_age', 'sanctions_proximity']
+      if (exposure.evaluated) liveSignals.push('direct_counterparty_exposure')
+      else notEvaluated.unshift('direct_counterparty_exposure')
 
       return c.json(
         attest({
@@ -286,12 +333,15 @@ app.get(
           ...(ens ? { ens_name: ens, resolved_address: address } : {}),
           signals,
           verdict_basis: {
-            live_signals: ['sanctions'],
-            not_yet_evaluated: ['risk_score', 'mixer_exposure', 'wallet_age', 'sanctions_proximity'],
+            live_signals: liveSignals,
+            not_yet_evaluated: notEvaluated,
             note:
-              'v1 verdict is sanctions-driven. PASS means no sanctions match — ' +
-              'it is not a full risk clearance. Additional signals will enrich ' +
-              'future verdicts under the same response shape.',
+              'BLOCK means the address itself is sanctioned. WARN means it is not ' +
+              'sanctioned but transacted directly with an address that is — a ' +
+              'counterparty risk signal, not a designation. PASS means neither was ' +
+              'found within the scope described in signals.direct_counterparty_exposure.scope; ' +
+              'it is not a full risk clearance. Exposure is one-hop, Tempo-mainnet-only, ' +
+              'and covers a bounded recent window.',
           },
           ...chainalysisAttribution(),
           checked_at: new Date().toISOString(),
