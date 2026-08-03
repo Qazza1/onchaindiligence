@@ -33,6 +33,10 @@ const CHAIN_ID = 4217 // Tempo mainnet
 // Tempo's API 403s requests without a User-Agent.
 const USER_AGENT = 'OnchainDiligence/1.0 (support@onchaindiligence.com)'
 
+// Optional. `/v1/transfers` is public, but an API key raises throughput. Never
+// required: without it this module behaves identically, just on anonymous limits.
+const TEMPO_API_KEY = process.env.TEMPO_API_KEY || ''
+
 const PAGE_SIZE = 200 // hard maximum the endpoint accepts
 const MAX_COUNTERPARTIES_TO_SCREEN = 25 // bounds oracle reads per verdict
 const SCREEN_CONCURRENCY = 8
@@ -64,9 +68,13 @@ async function fetchRecentCounterparties(
     `${TEMPO_API}/transfers?chainId=${CHAIN_ID}` +
     `&limit=${PAGE_SIZE}&address=${address.toLowerCase()}`
 
-  const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-  })
+  const headers: Record<string, string> = {
+    'User-Agent': USER_AGENT,
+    Accept: 'application/json',
+  }
+  if (TEMPO_API_KEY) headers.Authorization = `Bearer ${TEMPO_API_KEY}`
+
+  const res = await fetch(url, { headers })
   if (!res.ok) {
     throw new Error(`Tempo transfer lookup failed (status ${res.status})`)
   }
