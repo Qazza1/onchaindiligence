@@ -42,11 +42,15 @@ const MAX_COUNTERPARTIES_TO_SCREEN = 25 // bounds oracle reads per verdict
 const SCREEN_CONCURRENCY = 8
 
 export interface ExposureResult {
-  /** False when the lookup could not be completed. Never treat false as "clean". */
+  /** True only when every discovered counterparty in the supported window was screened. */
   evaluated: boolean
+  status: 'complete' | 'partial' | 'failed'
   transfers_scanned: number
   counterparties_found: number
+  counterparties_considered: number
   counterparties_screened: number
+  counterparties_omitted: number
+  screening_failures: number
   /** Counterparties the oracle currently designates as sanctioned. */
   sanctioned_counterparties: string[]
   /** Present only when evaluated === false. */
@@ -139,7 +143,10 @@ export async function checkDirectExposure(address: string): Promise<ExposureResu
   const base = {
     transfers_scanned: 0,
     counterparties_found: 0,
+    counterparties_considered: 0,
     counterparties_screened: 0,
+    counterparties_omitted: 0,
+    screening_failures: 0,
     sanctioned_counterparties: [] as string[],
     scope: SCOPE_NOTE,
   }
@@ -154,6 +161,7 @@ export async function checkDirectExposure(address: string): Promise<ExposureResu
     return {
       ...base,
       evaluated: false,
+      status: 'failed' as const,
       unevaluated_reason:
         err instanceof Error ? err.message : 'counterparty lookup failed',
     }
@@ -161,12 +169,19 @@ export async function checkDirectExposure(address: string): Promise<ExposureResu
 
   const toScreen = counterparties.slice(0, MAX_COUNTERPARTIES_TO_SCREEN)
   const { sanctioned, screened } = await screenCounterparties(toScreen)
+  const omitted = Math.max(0, counterparties.length - toScreen.length)
+  const screeningFailures = Math.max(0, toScreen.length - screened)
+  const complete = omitted === 0 && screeningFailures === 0
 
   return {
-    evaluated: true,
+    evaluated: complete,
+    status: complete ? 'complete' : 'partial',
     transfers_scanned: transfersScanned,
     counterparties_found: counterparties.length,
+    counterparties_considered: toScreen.length,
     counterparties_screened: screened,
+    counterparties_omitted: omitted,
+    screening_failures: screeningFailures,
     sanctioned_counterparties: sanctioned,
     scope: SCOPE_NOTE,
   }

@@ -50,8 +50,9 @@ import {
   anchorSignature,
   isSignatureAnchored,
 } from './anchor.js'
-import { resolveToAddress, EnsResolutionError } from './ens.js'
+import { resolveToAddress, looksLikeEns, EnsResolutionError } from './ens.js'
 import { checkDirectExposure } from './exposure.js'
+import { authorizeInternalBearer } from './internalAuth.js'
 
 assertConfigured()
 
@@ -101,9 +102,9 @@ app.use(
   cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
 )
 
-// The investigations app (app.onchaindiligence.com) calls /attest to sign
-// evidence exports with the same attestation key the rest of the API uses, so
-// exports verify through the same /verify page. Scoped to the app origin.
+// POST /attest is an internal server-to-server signing route. CORS remains
+// narrow as defence in depth, but the actual security boundary is the bearer
+// token checked by the handler. Browser code must never receive that token.
 const APP_ORIGINS = (process.env.APP_ALLOWED_ORIGINS ||
   'https://app.onchaindiligence.com,http://localhost:5173')
   .split(',')
@@ -113,7 +114,7 @@ app.use(
   cors({
     origin: APP_ORIGINS,
     allowMethods: ['POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type'],
+    allowHeaders: ['Content-Type', 'Authorization'],
     maxAge: 86400,
   })
 )
@@ -121,7 +122,7 @@ app.use(
 const mppx = Mppx.create({
   // Root-of-trust for challenge binding. MUST be set via env on mainnet;
   // never commit it. See README "Secrets" section.
-  secretKey: process.env.MPP_SECRET_KEY,
+  secretKey: config.tempo.secretKey,
   methods: [
     tempo.charge({
       currency: config.tempo.currencyAddress,
@@ -198,12 +199,108 @@ function healthGate(check: () => Promise<boolean>, providerName: string): Middle
   }
 }
 
+// Cheap, side-effect-free request validation. These guards run before payment
+// middleware so callers are never challenged or charged for malformed input.
+const validateAddressOrEns: MiddlewareHandler = async (c, next) => {
+  const input = c.req.param('address')?.trim() ?? ''
+  const isAddress = /^0x[0-9a-fA-F]{40}$/.test(input)
+  if ((!isAddress && !looksLikeEns(input)) || input.length > 255) {
+    return c.json({ error: 'invalid address or ENS name parameter' }, 400)
+  }
+  await next()
+}
+
+const validateNameScreenQuery: MiddlewareHandler = async (c, next) => {
+  const name = c.req.query('name')?.trim() ?? ''
+  if (name.length < 2 || name.length > 200) {
+    return c.json({ error: 'provide ?name= with 2 to 200 characters' }, 400)
+  }
+  const threshold = c.req.query('threshold')
+  if (threshold !== undefined) {
+    const parsed = Number(threshold)
+    if (!Number.isFinite(parsed) || parsed < 0.5 || parsed > 1) {
+      return c.json({ error: 'threshold must be a number between 0.5 and 1.0' }, 400)
+    }
+  }
+  await next()
+}
+
+const validateCompanyNumber: MiddlewareHandler = async (c, next) => {
+  const companyNumber = c.req.param('companyNumber')?.trim() ?? ''
+  if (companyNumber.length < 1 || companyNumber.length > 20) {
+    return c.json({ error: 'companyNumber must be 1 to 20 characters' }, 400)
+  }
+  await next()
+}
+
+const validateUsCompanyQuery: MiddlewareHandler = async (c, next) => {
+  const query = c.req.query('q')?.trim() ?? ''
+  if (query.length < 1 || query.length > 200) {
+    return c.json({ error: 'provide ?q= with 1 to 200 characters' }, 400)
+  }
+  await next()
+}
+
+const validateDiligenceQuery: MiddlewareHandler = async (c, next) => {
+  const wallet = c.req.query('wallet')?.trim()
+  const company = c.req.query('company')?.trim()
+  if (!wallet && !company) {
+    return c.json(
+      { error: 'provide at least one of: ?wallet=<address> or ?company=<company_number>' },
+      400
+    )
+  }
+  if (wallet) {
+    const isAddress = /^0x[0-9a-fA-F]{40}$/.test(wallet)
+    if ((!isAddress && !looksLikeEns(wallet)) || wallet.length > 255) {
+      return c.json({ error: 'invalid wallet address or ENS name' }, 400)
+    }
+  }
+  if (company && company.length > 20) {
+    return c.json({ error: 'company number must be at most 20 characters' }, 400)
+  }
+  await next()
+}
+
+const validateAnchorRequest: MiddlewareHandler = async (c, next) => {
+  if (!anchoringEnabled()) {
+    return c.json({ error: 'on-chain anchoring is not configured on this deployment' }, 503)
+  }
+  let body: unknown
+  try {
+    body = await c.req.raw.clone().json()
+  } catch {
+    return c.json({ error: 'expected JSON body with a "signature" field' }, 400)
+  }
+  const signature = (body as { signature?: unknown })?.signature
+  if (typeof signature !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(signature)) {
+    return c.json({ error: 'signature must be a 64-byte Ed25519 signature in base64url' }, 400)
+  }
+  await next()
+}
+
+const requireInternalAttestationAuth: MiddlewareHandler = async (c, next) => {
+  const auth = authorizeInternalBearer(
+    c.req.header('authorization'),
+    config.attestation.serviceToken
+  )
+  if (auth === 'unconfigured') {
+    return c.json({ error: 'internal attestation service is not configured' }, 503)
+  }
+  if (auth !== 'authorized') {
+    c.header('WWW-Authenticate', 'Bearer realm="internal-attestation"')
+    return c.json({ error: 'unauthorized' }, 401)
+  }
+  await next()
+}
+
 // ---------------------------------------------------------------------
 // Route 1: Sanctions screening only
 // ---------------------------------------------------------------------
 app.get(
   '/screen/:address',
   rateLimit,
+  validateAddressOrEns,
   healthGate(chainalysisHealthy, 'Chainalysis'),
   mppx.charge({ amount: config.pricing.sanctionsCheck }),
   async (c) => {
@@ -252,6 +349,7 @@ app.get(
 app.get(
   '/verdict/:address',
   rateLimit,
+  validateAddressOrEns,
   healthGate(chainalysisHealthy, 'Chainalysis'),
   mppx.charge({ amount: config.pricing.sanctionsCheck }),
   async (c) => {
@@ -271,8 +369,7 @@ app.get(
         checkDirectExposure(address),
       ])
 
-      const exposureHit =
-        exposure.evaluated && exposure.sanctioned_counterparties.length > 0
+      const exposureHit = exposure.sanctioned_counterparties.length > 0
 
       let verdict: 'PASS' | 'WARN' | 'BLOCK'
       const reasons: string[] = []
@@ -292,26 +389,35 @@ app.get(
         reasons.push(
           'This is a counterparty risk signal, not a designation of this address.'
         )
+      } else if (exposure.status !== 'complete') {
+        verdict = 'WARN'
+        reasons.push('No sanctions match found for the subject address.')
+        reasons.push(
+          exposure.status === 'failed'
+            ? 'Direct counterparty exposure could not be evaluated.'
+            : `Direct counterparty exposure was incomplete: ` +
+                `${exposure.screening_failures} screen failure(s), ` +
+                `${exposure.counterparties_omitted} counterparty/counterparties omitted by the safety limit.`
+        )
       } else {
         verdict = 'PASS'
         reasons.push('No sanctions match found.')
-        if (!exposure.evaluated) {
-          reasons.push(
-            'Direct counterparty exposure could NOT be evaluated for this address — ' +
-              'this PASS rests on the sanctions check alone.'
-          )
-        }
       }
 
       const signals = {
         sanctions: { checked: true, sanctioned: screen.sanctioned === true },
         direct_counterparty_exposure: {
-          checked: exposure.evaluated,
-          ...(exposure.evaluated
+          checked: exposure.status !== 'failed',
+          complete: exposure.status === 'complete',
+          status: exposure.status,
+          ...(exposure.status !== 'failed'
             ? {
                 transfers_scanned: exposure.transfers_scanned,
                 counterparties_found: exposure.counterparties_found,
+                counterparties_considered: exposure.counterparties_considered,
                 counterparties_screened: exposure.counterparties_screened,
+                counterparties_omitted: exposure.counterparties_omitted,
+                screening_failures: exposure.screening_failures,
                 sanctioned_counterparties: exposure.sanctioned_counterparties,
               }
             : { not_evaluated_reason: exposure.unevaluated_reason }),
@@ -322,7 +428,7 @@ app.get(
       // Only claim a signal is live when it actually ran for THIS request.
       const liveSignals = ['sanctions']
       const notEvaluated = ['risk_score', 'mixer_exposure', 'wallet_age', 'sanctions_proximity']
-      if (exposure.evaluated) liveSignals.push('direct_counterparty_exposure')
+      if (exposure.status === 'complete') liveSignals.push('direct_counterparty_exposure')
       else notEvaluated.unshift('direct_counterparty_exposure')
 
       return c.json(
@@ -416,6 +522,7 @@ app.get('/sandbox/screen/:address', rateLimit, (c) => {
 app.get(
   '/screen-name',
   rateLimit,
+  validateNameScreenQuery,
   mppx.charge({ amount: config.pricing.nameScreen }),
   async (c) => {
     const name = c.req.query('name')
@@ -458,6 +565,7 @@ app.get(
 app.get(
   '/company/:companyNumber',
   rateLimit,
+  validateCompanyNumber,
   healthGate(companiesHouseHealthy, 'Companies House'),
   mppx.charge({ amount: config.pricing.companyCheck }),
   async (c) => {
@@ -494,6 +602,7 @@ app.get(
 app.get(
   '/us-company',
   rateLimit,
+  validateUsCompanyQuery,
   healthGate(edgarHealthy, 'SEC EDGAR'),
   mppx.charge({ amount: config.pricing.usCompanyCheck }),
   async (c) => {
@@ -567,6 +676,7 @@ const diligenceHealthGate: MiddlewareHandler = async (c, next) => {
 app.get(
   '/diligence',
   rateLimit,
+  validateDiligenceQuery,
   diligenceHealthGate,
   mppx.charge({ amount: config.pricing.combinedDiligence }),
   async (c) => {
@@ -654,6 +764,8 @@ app.get(
 app.get(
   '/web/screen/:address',
   rateLimit,
+  validateAddressOrEns,
+  healthGate(chainalysisHealthy, 'Chainalysis'),
   mppx.charge({ amount: config.pricing.webSanctionsCheck }),
   async (c) => {
     const input = c.req.param('address')
@@ -684,6 +796,7 @@ app.get(
 app.get(
   '/web/company/:companyNumber',
   rateLimit,
+  validateCompanyNumber,
   healthGate(companiesHouseHealthy, 'Companies House'),
   mppx.charge({ amount: config.pricing.webCompanyCheck }),
   async (c) => {
@@ -710,6 +823,7 @@ app.get(
 app.get(
   '/web/screen-name',
   rateLimit,
+  validateNameScreenQuery,
   mppx.charge({ amount: config.pricing.webNameScreen }),
   async (c) => {
     const name = c.req.query('name')
@@ -744,6 +858,7 @@ app.get(
 app.get(
   '/web/us-company',
   rateLimit,
+  validateUsCompanyQuery,
   healthGate(edgarHealthy, 'SEC EDGAR'),
   mppx.charge({ amount: config.pricing.webUsCompanyCheck }),
   async (c) => {
@@ -771,15 +886,21 @@ app.get(
 )
 
 // ---------------------------------------------------------------------
-// Route: /attest — free attestation endpoint for the app UI
+// Route: /attest — authenticated internal attestation endpoint
 //
-// Accepts a caller-supplied evidence object and returns it wrapped in a
-// signed Ed25519 attestation envelope (same shape as the paid routes).
-// Free (no MPP gating). CORS is handled by the cors() middleware for
-// '/attest' registered near the top of the file (APP_ORIGINS).
+// The signing key is a product root of trust. Only trusted backend services
+// may submit results here; CORS alone is never authentication. The app's
+// browser-side evidence export remains disabled until it has an authenticated
+// backend that reconstructs evidence from authoritative stored records.
 // ---------------------------------------------------------------------
-app.post('/attest', async (c) => {
-  // CORS is handled by the cors() middleware registered for '/attest' above.
+app.get('/attest/ready', rateLimit, requireInternalAttestationAuth, (c) => {
+  if (!attestationEnabled()) {
+    return c.json({ ready: false, error: 'attestation is not configured' }, 503)
+  }
+  return c.json({ ready: true, key_id: getKeyId(), algorithm: 'ed25519' })
+})
+
+app.post('/attest', rateLimit, requireInternalAttestationAuth, async (c) => {
   if (!attestationEnabled()) {
     return c.json(
       { error: 'attestation is not configured on this deployment' },
@@ -882,6 +1003,7 @@ app.get('/anchored', async (c) => {
 app.post(
   '/anchor',
   rateLimit,
+  validateAnchorRequest,
   mppx.charge({ amount: config.pricing.nameScreen }),
   async (c) => {
     if (!anchoringEnabled()) {
@@ -1011,7 +1133,7 @@ app.get('/', (c) =>
       'GET /screen-name?name=': `OFAC SDN name screening — $${config.pricing.nameScreen}`,
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
       'GET /us-company?q=': `US public company check (SEC EDGAR) — $${config.pricing.usCompanyCheck}`,
-      'POST /attest': 'Wrap caller-supplied evidence in a signed attestation — free',
+      'POST /attest': 'Internal authenticated result-signing service',
       'POST /anchor': `Anchor an attestation on Tempo — $${config.pricing.nameScreen}`,
       'GET /anchored?signature=': 'Check if an attestation is anchored on-chain — free',
       'GET /diligence?wallet=&company=': `Combined check — $${config.pricing.combinedDiligence}`,

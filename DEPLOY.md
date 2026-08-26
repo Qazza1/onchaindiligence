@@ -88,7 +88,8 @@ screen. Add each of these as a separate key/value pair.
 | `TEMPO_CURRENCY_ADDRESS` | the **mainnet** pathUSD/USDC address from Step 0 |
 | `TEMPO_TESTNET` | `false` |
 | `MPP_SECRET_KEY` | a 32-byte random secret (generate it — see below) |
-| `ATTESTATION_PRIVATE_KEY` | Ed25519 PKCS8 PEM for signing responses (generate it — see below). Optional but recommended; without it responses are unsigned. |
+| `ATTESTATION_PRIVATE_KEY` | Ed25519 PKCS8 PEM for signing responses (generate it — see below). Required: production does not boot unsigned. |
+| `ATTESTATION_SERVICE_TOKEN` | a separate 32-byte random secret for trusted server-to-server calls to `/attest` |
 
 There is **no Chainalysis API key** — sanctions screening uses the public
 on-chain oracle (no key, no signup). Optionally set `SANCTIONS_ORACLE_RPC_URL`
@@ -100,6 +101,10 @@ Generate the `MPP_SECRET_KEY` on your machine and paste the output:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
+
+Generate `ATTESTATION_SERVICE_TOKEN` independently using the same command.
+Give it only to trusted backend services such as the standalone MCP deployment.
+Never put it in browser code. Do not reuse `MPP_SECRET_KEY`.
 
 Generate the `ATTESTATION_PRIVATE_KEY` (Ed25519 signing key) and paste the
 whole multi-line PRIVATE block:
@@ -214,3 +219,7 @@ instead of the registrar's nameservers).
 - `TEMPO_TESTNET` — `false` for mainnet. The code reads this explicitly.
 - `MPP_SECRET_KEY` — secures payment challenges. Treat like a password;
   never commit it; rotate if exposed.
+- `ATTESTATION_PRIVATE_KEY` — required Ed25519 signing root. Never copy it to
+  the app, MCP server, browser, CLI or CI jobs.
+- `ATTESTATION_SERVICE_TOKEN` — authenticates trusted backend callers of the
+  internal `/attest` signing service. Rotate independently of the signing key.

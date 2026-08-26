@@ -33,6 +33,18 @@ export const config = {
     // but mppx's TempoAddress type requires the branded `0x${string}`
     // literal type. Validated in assertConfigured() below.
     recipient: (process.env.MPP_RECIPIENT_ADDRESS ?? '') as `0x${string}`,
+
+    // HMAC root used by mppx to bind payment challenges to this deployment.
+    // A production service must never issue unbound, randomly identified
+    // challenges merely because this secret was omitted.
+    secretKey: process.env.MPP_SECRET_KEY ?? '',
+  },
+
+  // Authenticates trusted server-to-server callers of POST /attest. This is
+  // deliberately not a browser credential: evidence signing must move behind
+  // an authenticated app backend before the UI can use it again.
+  attestation: {
+    serviceToken: process.env.ATTESTATION_SERVICE_TOKEN ?? '',
   },
 
   // --- Pricing -----------------------------------------------------------
@@ -129,6 +141,9 @@ export function assertConfigured() {
   const missing: string[] = []
   if (!config.tempo.recipient) missing.push('MPP_RECIPIENT_ADDRESS')
   if (!config.tempo.currencyAddress) missing.push('TEMPO_CURRENCY_ADDRESS')
+  if (!config.tempo.secretKey) missing.push('MPP_SECRET_KEY')
+  if (!process.env.ATTESTATION_PRIVATE_KEY) missing.push('ATTESTATION_PRIVATE_KEY')
+  if (!config.attestation.serviceToken) missing.push('ATTESTATION_SERVICE_TOKEN')
   if (!config.companiesHouse.apiKey) missing.push('COMPANIES_HOUSE_API_KEY')
 
   if (missing.length > 0) {
@@ -157,5 +172,13 @@ export function assertConfigured() {
       `TEMPO_CURRENCY_ADDRESS ("${config.tempo.currencyAddress}") doesn't look like ` +
         `a valid 0x-prefixed token address (expected 0x + 40 hex chars).`
     )
+  }
+
+  if (config.tempo.secretKey.length < 32) {
+    throw new Error('MPP_SECRET_KEY must be at least 32 characters long.')
+  }
+
+  if (config.attestation.serviceToken.length < 32) {
+    throw new Error('ATTESTATION_SERVICE_TOKEN must be at least 32 characters long.')
   }
 }

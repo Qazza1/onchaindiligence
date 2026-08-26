@@ -41,6 +41,8 @@ process.env.MPP_RECIPIENT_ADDRESS = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb9226d'
 
 const { screenAddress } = await import('../src/chainalysis.js')
 const { checkCompany, CompanyNotFoundError } = await import('../src/companiesHouse.js')
+const { authorizeInternalBearer } = await import('../src/internalAuth.js')
+const { checkDirectExposure } = await import('../src/exposure.js')
 
 let passed = 0
 let failed = 0
@@ -58,6 +60,14 @@ async function test(name: string, fn: () => Promise<void>) {
 }
 
 console.log('Sanctions oracle client:')
+
+await test('internal attestation auth fails closed and accepts only the configured bearer', async () => {
+  const token = 'a-secure-internal-token-that-is-long-enough'
+  assert.strictEqual(authorizeInternalBearer(undefined, ''), 'unconfigured')
+  assert.strictEqual(authorizeInternalBearer(undefined, token), 'unauthorized')
+  assert.strictEqual(authorizeInternalBearer('Bearer wrong-token', token), 'unauthorized')
+  assert.strictEqual(authorizeInternalBearer(`Bearer ${token}`, token), 'authorized')
+})
 
 await test('invalid address is rejected as a 400-class error (no network call)', async () => {
   const { ChainalysisUpstreamError } = await import('../src/chainalysis.js')
@@ -87,6 +97,30 @@ await test('attribution is present, honest, and oracle-aware', async () => {
   assert.ok(a.source && a.note)
   assert.match(a.source, /oracle/i)
   assert.match(a.note, /not legal advice|not a complete compliance/i)
+})
+
+await test('direct exposure is complete when the supported window has no counterparties', async () => {
+  queueMock(200, { data: [] })
+  const result = await checkDirectExposure('0x0000000000000000000000000000000000000001')
+  assert.strictEqual(result.status, 'complete')
+  assert.strictEqual(result.evaluated, true)
+  assert.strictEqual(result.counterparties_screened, 0)
+})
+
+await test('direct exposure is partial, never complete, when a counterparty screen fails', async () => {
+  queueMock(200, {
+    data: [
+      {
+        sender: '0x0000000000000000000000000000000000000001',
+        recipient: '0x0000000000000000000000000000000000000002',
+      },
+    ],
+  })
+  queueMock(200, { jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'upstream failed' } })
+  const result = await checkDirectExposure('0x0000000000000000000000000000000000000001')
+  assert.strictEqual(result.status, 'partial')
+  assert.strictEqual(result.evaluated, false)
+  assert.strictEqual(result.screening_failures, 1)
 })
 
 // NOTE: the live true/false behaviour of the oracle (clean address -> false,
