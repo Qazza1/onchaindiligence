@@ -27,7 +27,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-007 | Standalone MCP verdict logic has diverged from the HTTP verdict | MCP, API | OPEN | One shared verdict implementation or one canonical signed API call serves every channel; contract tests compare outputs |
 | OD-008 | Paid MCP/API responses may be returned unsigned when signing is unavailable | MCP, API | FIXED LOCALLY | Production boot requires signing; MCP probes authenticated signing readiness before payment and never returns unsigned success; add outage integration test, deploy and verify no settlement |
 | OD-009 | Required payment/signing configuration can fail open; MCP defaults to testnet | API, MCP | FIXED LOCALLY | API requires payment/signing credentials; MCP requires explicit network, payment credentials and signing token with length validation; deploy and verify startup failures |
-| OD-010 | GitHub Action downloads an unpinned CLI while exposing the payer key and exits green after screening failures | Action | IN PROGRESS | CLI is now exact-version pinned, shell execution removed, install scripts disabled, fresh signatures verified, and errors/unscreened results fail closed; bundle with immutable lock/integrity so runtime install is unnecessary |
+| OD-010 | GitHub Action downloads executable code while exposing the payer key and exits green after screening failures | Action | FIXED LOCALLY | Action uses a committed bundled payment client with pinned/locked build dependencies, passes only the payer key to it, verifies fresh signatures, and fails closed; verify bundle reproducibility in CI and publish a new immutable Action tag |
 | OD-011 | Live terms/privacy documents contain unresolved legal placeholders | Site | DECISION REQUIRED | Qualified legal review; entity, refunds, SLA, liability, governing law, retention, controller, subprocessors and transfers completed and published |
 | OD-012 | Production dependency vulnerabilities, especially API/MCP/SDK/Tempo `viem`/`ws` chains | API, MCP, SDK, Tempo | OPEN | Dependencies upgraded and compatibility-tested; unused MCP packages removed; production audit has no unaccepted high findings |
 | OD-013 | Attestation verifier renders untrusted metadata through `innerHTML` | Site | FIXED LOCALLY | Metadata/data now use DOM nodes and `textContent`, classes are allowlisted, and baseline security headers/CSP are configured; add browser regression test, deploy and verify headers |
@@ -78,3 +78,6 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 - 2026-08-26: GitHub Action now pins the CLI release, disables install scripts,
   avoids shell execution, verifies fresh Ed25519 envelopes/address binding, and
   fails closed on errors or unscreened addresses by default. Bundling remains.
+- 2026-08-26: Action payment execution now uses a committed esbuild artifact
+  generated from exact dependency versions. Runtime `npm`/`npx` installation is
+  removed and the child process receives only `PAYER_KEY`.
