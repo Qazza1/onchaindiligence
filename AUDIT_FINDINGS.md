@@ -31,7 +31,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-011 | Live terms/privacy documents contain unresolved legal placeholders | Site | DECISION REQUIRED | Qualified legal review; entity, refunds, SLA, liability, governing law, retention, controller, subprocessors and transfers completed and published |
 | OD-012 | Production dependency vulnerabilities, especially API/MCP/SDK/Tempo `viem`/`ws` chains | API, MCP, SDK, Tempo | OPEN | Dependencies upgraded and compatibility-tested; unused MCP packages removed; production audit has no unaccepted high findings |
 | OD-013 | Attestation verifier renders untrusted metadata through `innerHTML` | Site | FIXED LOCALLY | Metadata/data now use DOM nodes and `textContent`, classes are allowlisted, and baseline security headers/CSP are configured; add browser regression test, deploy and verify headers |
-| OD-014 | App database has no versioned schema, migrations, constraints or restore procedure | App | OPEN | Migration history creates all tables/indexes/constraints; clean deployment and backup/restore drill pass |
+| OD-014 | App database has no versioned schema, migrations, constraints or restore procedure | App | FIXED LOCALLY | Versioned baseline now defines tables, foreign keys, checks and indexes with application guidance; compare/apply in staging and complete a backup/restore drill |
 
 ## Medium
 
@@ -47,8 +47,8 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-022 | `/anchor` accepts arbitrary signature-shaped data without proving it is an OnchainDiligence attestation | API, Anchor | OPEN | Complete envelope and known `key_id` signature verified before anchoring, or endpoint/documentation explicitly becomes generic blob anchoring |
 | OD-023 | Registry issuer transfer is one-step and vulnerable to irreversible operator error | Anchor | OPEN | Two-step `pendingIssuer`/`acceptIssuer`, tests, multisig ownership and operational runbook |
 | OD-024 | CI and secret scanning are incomplete; broad allowlists can suppress real secrets | All | OPEN | Test/typecheck/build/security workflows cover all repos; actions pinned to commits; secret allowlists narrowed |
-| OD-025 | Case wallet insertion does not first authorize ownership of the parent case | App | OPEN | Parent authorization enforced in the insert transaction and covered by cross-tenant tests |
-| OD-026 | User strings are weakly bounded and raw database error messages can reach clients | App | OPEN | Request schemas and size limits; stable public error codes; detailed errors restricted to server logs |
+| OD-025 | Case wallet insertion does not first authorize ownership of the parent case | App | FIXED LOCALLY | Add-wallet now inserts through an owner-filtered parent SELECT and deletion joins through the owner-filtered case; add cross-tenant tests after authentication lands |
+| OD-026 | User strings are weakly bounded and raw database error messages can reach clients | App | FIXED LOCALLY | Case/watchlist strings now have application and database size limits; database details remain server-side and clients receive stable generic errors |
 | OD-027 | MCP claims a matching sanctions programme although the oracle returns only a boolean | MCP | FIXED LOCALLY | Tool description now states that the oracle returns a boolean without programme-level case detail; publish and verify registry metadata |
 | OD-028 | Live verifier sample fetches a paid endpoint without a payment client | Site | OPEN | Static valid signed fixture or dedicated non-production sample endpoint verifies successfully without payment |
 | OD-029 | Tempo spike documentation/scripts do not match the repository state | Tempo spike | OPEN | Decide promote/archive; align scripts, README and tested deployment path |
@@ -81,3 +81,6 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 - 2026-08-26: Action payment execution now uses a committed esbuild artifact
   generated from exact dependency versions. Runtime `npm`/`npx` installation is
   removed and the child process receives only `PAYER_KEY`.
+- 2026-08-26: app now has a versioned PostgreSQL baseline with keys, foreign
+  keys, checks and indexes. Case-wallet mutation is owner-bound in SQL; user
+  strings are bounded and raw database errors no longer reach clients.
