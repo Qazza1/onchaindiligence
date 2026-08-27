@@ -4,7 +4,7 @@
  * Compliance Diligence Suite — MPP-gated endpoints on Tempo:
  *
  *   GET /screen/:address          — sanctions check only  (Chainalysis)
- *   GET /verdict/:address         — unified signed PASS/BLOCK verdict
+ *   GET /verdict/:address         — unified signed PASS/WARN/BLOCK verdict
  *   GET /company/:companyNumber   — UK company check only (Companies House)
  *   GET /diligence                — both, bundled          (?wallet & ?company)
  *
@@ -62,8 +62,8 @@ import {
   isSignatureAnchored,
 } from './anchor.js'
 import { resolveToAddress, looksLikeEns, EnsResolutionError } from './ens.js'
-import { checkDirectExposure } from './exposure.js'
 import { authorizeInternalBearer } from './internalAuth.js'
+import { evaluateVerdict } from './verdict.js'
 
 assertConfigured()
 
@@ -356,14 +356,10 @@ app.get(
 //
 // One call → one signed decision, with reasons. The only *signed* verdict in
 // the x402 compliance space. v1 logic is conservative and honest:
-//   BLOCK — sanctioned (hard legal line).  PASS — screened clean.
-//   WARN  — reserved for genuinely-partial signals; with sanctions-only data
-//           there is no honest WARN trigger yet, and any upstream failure
-//           ERRORS rather than returning a false PASS. Richer signals (risk
-//           score, mixer exposure, wallet age, proximity) feed this same
-//           endpoint later with no breaking change; `verdict_basis` discloses
-//           exactly which signals are live so callers never over-trust a thin
-//           PASS. Paid, same tier as /screen (bundles a real screening call).
+//   BLOCK — subject address sanctioned (hard legal line).
+//   WARN  — direct sanctioned-counterparty exposure or incomplete exposure.
+//   PASS  — subject clean and the bounded exposure check completed cleanly.
+// The policy lives in verdict.ts and is reused by internal paid transports.
 // ---------------------------------------------------------------------
 app.get(
   '/verdict/:address',
@@ -378,100 +374,7 @@ app.get(
     }
 
     try {
-      const { address, ens } = await resolveToAddress(input)
-
-      // The subject's own sanctions status is the primary signal and must
-      // succeed (an error here is thrown, never a false PASS). Direct
-      // counterparty exposure enriches it and never throws — see exposure.ts.
-      const [screen, exposure] = await Promise.all([
-        screenAddress(address),
-        checkDirectExposure(address),
-      ])
-
-      const exposureHit = exposure.sanctioned_counterparties.length > 0
-
-      let verdict: 'PASS' | 'WARN' | 'BLOCK'
-      const reasons: string[] = []
-
-      if (screen.sanctioned === true) {
-        verdict = 'BLOCK'
-        reasons.push('Address is on the sanctions list (OFAC via Chainalysis on-chain oracle).')
-      } else if (exposureHit) {
-        // Not a legal prohibition on this address — a risk signal about who it
-        // transacts with. WARN, never BLOCK: we do not designate by association.
-        verdict = 'WARN'
-        const n = exposure.sanctioned_counterparties.length
-        reasons.push(
-          `Address is not itself sanctioned, but transacted directly with ` +
-            `${n} sanctioned address${n === 1 ? '' : 'es'} on Tempo mainnet.`
-        )
-        reasons.push(
-          'This is a counterparty risk signal, not a designation of this address.'
-        )
-      } else if (exposure.status !== 'complete') {
-        verdict = 'WARN'
-        reasons.push('No sanctions match found for the subject address.')
-        reasons.push(
-          exposure.status === 'failed'
-            ? 'Direct counterparty exposure could not be evaluated.'
-            : `Direct counterparty exposure was incomplete: ` +
-                `${exposure.screening_failures} screen failure(s), ` +
-                `${exposure.counterparties_omitted} counterparty/counterparties omitted by the safety limit.`
-        )
-      } else {
-        verdict = 'PASS'
-        reasons.push('No sanctions match found.')
-      }
-
-      const signals = {
-        sanctions: { checked: true, sanctioned: screen.sanctioned === true },
-        direct_counterparty_exposure: {
-          checked: exposure.status !== 'failed',
-          complete: exposure.status === 'complete',
-          status: exposure.status,
-          ...(exposure.status !== 'failed'
-            ? {
-                transfers_scanned: exposure.transfers_scanned,
-                counterparties_found: exposure.counterparties_found,
-                counterparties_considered: exposure.counterparties_considered,
-                counterparties_screened: exposure.counterparties_screened,
-                counterparties_omitted: exposure.counterparties_omitted,
-                screening_failures: exposure.screening_failures,
-                sanctioned_counterparties: exposure.sanctioned_counterparties,
-              }
-            : { not_evaluated_reason: exposure.unevaluated_reason }),
-          scope: exposure.scope,
-        },
-      }
-
-      // Only claim a signal is live when it actually ran for THIS request.
-      const liveSignals = ['sanctions']
-      const notEvaluated = ['risk_score', 'mixer_exposure', 'wallet_age', 'sanctions_proximity']
-      if (exposure.status === 'complete') liveSignals.push('direct_counterparty_exposure')
-      else notEvaluated.unshift('direct_counterparty_exposure')
-
-      return c.json(
-        attest({
-          verdict,
-          reasons,
-          address,
-          ...(ens ? { ens_name: ens, resolved_address: address } : {}),
-          signals,
-          verdict_basis: {
-            live_signals: liveSignals,
-            not_yet_evaluated: notEvaluated,
-            note:
-              'BLOCK means the address itself is sanctioned. WARN means it is not ' +
-              'sanctioned but transacted directly with an address that is — a ' +
-              'counterparty risk signal, not a designation. PASS means neither was ' +
-              'found within the scope described in signals.direct_counterparty_exposure.scope; ' +
-              'it is not a full risk clearance. Exposure is one-hop, Tempo-mainnet-only, ' +
-              'and covers a bounded recent window.',
-          },
-          ...chainalysisAttribution(),
-          checked_at: new Date().toISOString(),
-        })
-      )
+      return c.json(attest(await evaluateVerdict(input)))
     } catch (err) {
       if (err instanceof EnsResolutionError) {
         return c.json({ error: err.message }, 400)
@@ -934,6 +837,47 @@ app.get('/attest/ready', rateLimit, requireInternalAttestationAuth, (c) => {
   return c.json({ ready: true, key_id: getKeyId(), algorithm: 'ed25519' })
 })
 
+// MCP's paid verdict route probes this before presenting an x402 challenge.
+// This confirms both the signing root and the verdict's mandatory sanctions
+// provider are available. Counterparty exposure is enrichment and degrades to
+// WARN, so it is deliberately not a readiness requirement.
+app.get(
+  '/internal/verdict/ready',
+  rateLimit,
+  requireInternalAttestationAuth,
+  async (c) => {
+    if (!attestationEnabled()) {
+      return c.json({ ready: false, error: 'attestation is not configured' }, 503)
+    }
+    if (!(await chainalysisHealthy())) {
+      return c.json({ ready: false, error: 'sanctions provider unavailable' }, 503)
+    }
+    return c.json({ ready: true })
+  }
+)
+
+// Canonical server-to-server verdict for paid transports such as MCP. The
+// caller cannot submit arbitrary evidence: it supplies only an address/ENS,
+// and this service performs the authoritative checks and decision itself.
+app.get(
+  '/internal/verdict/:address',
+  rateLimit,
+  requireInternalAttestationAuth,
+  validateAddressOrEns,
+  healthGate(chainalysisHealthy, 'Chainalysis'),
+  async (c) => {
+    if (!attestationEnabled()) {
+      return c.json({ error: 'attestation is not configured on this deployment' }, 503)
+    }
+    try {
+      return c.json(attest(await evaluateVerdict(c.req.param('address'))))
+    } catch (err) {
+      if (err instanceof EnsResolutionError) return c.json({ error: err.message }, 400)
+      return handleUpstreamError(c, err)
+    }
+  }
+)
+
 app.post('/attest', rateLimit, requireInternalAttestationAuth, async (c) => {
   if (!attestationEnabled()) {
     return c.json(
@@ -1193,7 +1137,7 @@ app.get('/', (c) =>
     service: config.service.title,
     routes: {
       'GET /screen/:address': `Sanctions check only — $${config.pricing.sanctionsCheck}`,
-      'GET /verdict/:address': `Unified signed PASS/BLOCK counterparty verdict — $${config.pricing.sanctionsCheck}`,
+      'GET /verdict/:address': `Unified signed PASS/WARN/BLOCK counterparty verdict — $${config.pricing.sanctionsCheck}`,
       'GET /screen-name?name=': `OFAC SDN name screening — $${config.pricing.nameScreen}`,
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
       'GET /us-company?q=': `US public company check (SEC EDGAR) — $${config.pricing.usCompanyCheck}`,

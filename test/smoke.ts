@@ -43,6 +43,7 @@ const { screenAddress } = await import('../src/chainalysis.js')
 const { checkCompany, CompanyNotFoundError } = await import('../src/companiesHouse.js')
 const { authorizeInternalBearer } = await import('../src/internalAuth.js')
 const { checkDirectExposure } = await import('../src/exposure.js')
+const { buildVerdictData } = await import('../src/verdict.js')
 
 let passed = 0
 let failed = 0
@@ -121,6 +122,82 @@ await test('direct exposure is partial, never complete, when a counterparty scre
   assert.strictEqual(result.status, 'partial')
   assert.strictEqual(result.evaluated, false)
   assert.strictEqual(result.screening_failures, 1)
+})
+
+console.log('\nCanonical verdict policy:')
+
+const exposureFixture = (
+  overrides: Partial<Awaited<ReturnType<typeof checkDirectExposure>>> = {}
+) => ({
+  evaluated: true,
+  status: 'complete' as const,
+  transfers_scanned: 1,
+  counterparties_found: 1,
+  counterparties_considered: 1,
+  counterparties_screened: 1,
+  counterparties_omitted: 0,
+  screening_failures: 0,
+  sanctioned_counterparties: [] as string[],
+  scope: 'bounded test scope',
+  ...overrides,
+})
+
+const screenFixture = (sanctioned: boolean) => ({
+  address: '0x0000000000000000000000000000000000000001',
+  sanctioned,
+  identifications: [],
+})
+
+await test('BLOCK takes precedence when the subject address is sanctioned', async () => {
+  const result = buildVerdictData({
+    address: screenFixture(true).address,
+    screen: screenFixture(true),
+    exposure: exposureFixture(),
+    checkedAt: '2026-01-01T00:00:00.000Z',
+  })
+  assert.strictEqual(result.verdict, 'BLOCK')
+  assert.strictEqual(result.checked_at, '2026-01-01T00:00:00.000Z')
+})
+
+await test('WARN is returned for direct sanctioned-counterparty exposure', async () => {
+  const sanctionedCounterparty = '0x0000000000000000000000000000000000000002'
+  const result = buildVerdictData({
+    address: screenFixture(false).address,
+    screen: screenFixture(false),
+    exposure: exposureFixture({ sanctioned_counterparties: [sanctionedCounterparty] }),
+  })
+  assert.strictEqual(result.verdict, 'WARN')
+  assert.deepStrictEqual(
+    result.signals.direct_counterparty_exposure.sanctioned_counterparties,
+    [sanctionedCounterparty]
+  )
+})
+
+await test('incomplete exposure warns and can never produce a false PASS', async () => {
+  const result = buildVerdictData({
+    address: screenFixture(false).address,
+    screen: screenFixture(false),
+    exposure: exposureFixture({
+      evaluated: false,
+      status: 'partial',
+      counterparties_screened: 0,
+      screening_failures: 1,
+    }),
+  })
+  assert.strictEqual(result.verdict, 'WARN')
+  assert.ok(result.verdict_basis.not_yet_evaluated.includes('direct_counterparty_exposure'))
+})
+
+await test('PASS requires a clean subject and complete exposure evaluation', async () => {
+  const result = buildVerdictData({
+    address: screenFixture(false).address,
+    ens: 'clean.eth',
+    screen: screenFixture(false),
+    exposure: exposureFixture(),
+  })
+  assert.strictEqual(result.verdict, 'PASS')
+  assert.strictEqual(result.ens_name, 'clean.eth')
+  assert.ok(result.verdict_basis.live_signals.includes('direct_counterparty_exposure'))
 })
 
 // NOTE: the live true/false behaviour of the oracle (clean address -> false,
