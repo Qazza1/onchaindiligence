@@ -41,6 +41,10 @@ process.env.TEMPO_CURRENCY_ADDRESS = '0x20c0000000000000000000000000000000000000
 process.env.MPP_SECRET_KEY = 'test-mpp-secret-that-is-at-least-32-characters'
 process.env.ATTESTATION_SERVICE_TOKEN = 'test-attestation-token-at-least-32-characters'
 process.env.TEMPO_TESTNET = 'true'
+process.env.ANCHOR_RPC_URL = 'http://127.0.0.1:18546'
+process.env.ANCHOR_CHAIN_ID = '42431'
+process.env.ANCHOR_CONTRACT_ADDRESS = '0x1111111111111111111111111111111111111111'
+process.env.ANCHOR_PRIVATE_KEY = '0x' + '11'.repeat(32)
 
 const { screenAddress } = await import('../src/chainalysis.js')
 const { checkCompany, CompanyNotFoundError } = await import('../src/companiesHouse.js')
@@ -529,6 +533,66 @@ await test('tampered data fails verification', async () => {
   assert.strictEqual(ok, false)
 })
 
+await test('only a complete authentic compliance envelope is anchorable', async () => {
+  const { privateKey } = crypto.generateKeyPairSync('ed25519')
+  process.env.ATTESTATION_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+  att.__reinit()
+
+  const envelope: any = att.attest({ sanctioned: false, address: '0xABC' })
+  const verified = att.verifyAttestationForAnchoring(envelope)
+  assert.strictEqual(verified.valid, true)
+  if (verified.valid) {
+    assert.strictEqual(verified.attestation.signature, envelope.attestation.signature)
+    assert.strictEqual(verified.attestation.keyId, envelope.attestation.key_id)
+    assert.strictEqual(verified.attestation.keyStatus, 'active')
+  }
+
+  const tampered = structuredClone(envelope)
+  tampered.data.sanctioned = true
+  const tamperedResult = att.verifyAttestationForAnchoring(tampered)
+  assert.strictEqual(tamperedResult.valid, false)
+  if (!tamperedResult.valid) assert.strictEqual(tamperedResult.status, 422)
+
+  const randomSignature = structuredClone(envelope)
+  randomSignature.attestation.signature = Buffer.alloc(64, 7).toString('base64url')
+  assert.strictEqual(att.verifyAttestationForAnchoring(randomSignature).valid, false)
+
+  const unknownKey = structuredClone(envelope)
+  unknownKey.attestation.key_id = 'ed25519-unknown'
+  const unknownResult = att.verifyAttestationForAnchoring(unknownKey)
+  assert.strictEqual(unknownResult.valid, false)
+  if (!unknownResult.valid) assert.match(unknownResult.error, /key_id is not in/)
+})
+
+await test('anchor verification rejects disallowed key states and non-compliance purposes', async () => {
+  const { privateKey } = crypto.generateKeyPairSync('ed25519')
+  process.env.ATTESTATION_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+  att.__reinit()
+
+  const envelope: any = att.attest({ sanctioned: false })
+  const currentKey = att.getAttestationKeyRecord(envelope.attestation.key_id)!
+
+  const retired = att.verifyAttestationForAnchoring(envelope, () => ({
+    ...currentKey,
+    status: 'retired',
+  }))
+  assert.strictEqual(retired.valid, true)
+
+  for (const status of ['revoked', 'compromised'] as const) {
+    const result = att.verifyAttestationForAnchoring(envelope, () => ({ ...currentKey, status }))
+    assert.strictEqual(result.valid, false)
+    if (!result.valid) assert.match(result.error, new RegExp(status))
+  }
+
+  const fixture: any = att.attest(
+    { fixture: true },
+    { purpose: att.ATTESTATION_FIXTURE_PURPOSE }
+  )
+  const fixtureResult = att.verifyAttestationForAnchoring(fixture)
+  assert.strictEqual(fixtureResult.valid, false)
+  if (!fixtureResult.valid) assert.match(fixtureResult.error, /not an anchorable/)
+})
+
 await test('disabled when no key configured (graceful, not signed)', async () => {
   delete process.env.ATTESTATION_PRIVATE_KEY
   att.__reinit()
@@ -645,7 +709,7 @@ const { default: routeApp } = await import('../src/server.js')
 
 const expectPrePaymentRejection = async (
   path: string,
-  expectedStatus: 400 | 503,
+  expectedStatus: 400 | 413 | 422 | 503,
   init?: RequestInit
 ) => {
   const response = await routeApp.request(path, init)
@@ -654,7 +718,7 @@ const expectPrePaymentRejection = async (
   assert.strictEqual(response.headers.get('WWW-Authenticate'), null)
 }
 
-const invalidPaidRequests: Array<[string, 400 | 503, RequestInit?]> = [
+const invalidPaidRequests: Array<[string, 400 | 413 | 422 | 503, RequestInit?]> = [
   ['/screen/not-an-address', 400],
   ['/verdict/not-an-address', 400],
   ['/screen-name?name=x', 400],
@@ -667,7 +731,7 @@ const invalidPaidRequests: Array<[string, 400 | 503, RequestInit?]> = [
   ['/web/us-company', 400],
   [
     '/anchor',
-    503,
+    400,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -681,6 +745,34 @@ for (const [path, status, init] of invalidPaidRequests) {
     await expectPrePaymentRejection(path, status, init)
   })
 }
+
+await test('/anchor rejects a tampered full envelope before payment', async () => {
+  const envelope: any = att.attest({ sanctioned: false })
+  envelope.data.sanctioned = true
+  await expectPrePaymentRejection('/anchor', 422, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(envelope),
+  })
+})
+
+await test('/anchor rejects an oversized envelope before payment', async () => {
+  await expectPrePaymentRejection('/anchor', 413, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ padding: 'x'.repeat(256 * 1024) }),
+  })
+})
+
+await test('/anchor accepts an authentic envelope into the payment gate', async () => {
+  const envelope = att.attest({ sanctioned: false })
+  const response = await routeApp.request('/anchor', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(envelope),
+  })
+  assert.strictEqual(response.status, 402)
+})
 
 console.log(`\n${passed} passed, ${failed} failed`)
 

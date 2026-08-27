@@ -67,7 +67,7 @@ The per-call fee covers infrastructure, not the data, which is free and public.
 
 ## On-chain anchoring (optional)
 
-Any signed attestation can be anchored on **Tempo** via `POST /anchor`: the contract stores the `keccak256` of the attestation signature, giving an immutable, timestamped, tamper-evident record that a check existed — without putting any subject data on-chain. Anyone can verify via the free `GET /anchored?signature=`. Anchoring is decoupled from checks: it never blocks or delays a paid response. The contract lives in [onchaindiligence-anchor](https://github.com/Qazza1/onchaindiligence-anchor).
+Submit the complete signed response envelope (`data` plus `attestation`) to `POST /anchor`. Before payment, the API verifies the v2 issuer/schema/purpose, resolves the exact key ID from its published registry, rejects revoked or compromised keys, and verifies the Ed25519 signature over the canonical data. Only then does the Tempo contract store the `keccak256` of the signature, giving an immutable, timestamped, tamper-evident record that a check existed — without putting any subject data on-chain. Anyone can verify via the free `GET /anchored?signature=`. Anchoring is decoupled from checks: it never blocks or delays a paid response. The contract lives in [onchaindiligence-anchor](https://github.com/Qazza1/onchaindiligence-anchor).
 
 ## Architecture
 

@@ -46,6 +46,8 @@ import {
   ATTESTATION_SCHEMA_VERSION,
   ATTESTATION_PURPOSE,
   ATTESTATION_FIXTURE_PURPOSE,
+  verifyAttestationForAnchoring,
+  type VerifiedAttestationForAnchoring,
 } from './attestation.js'
 import { isTotalFailure } from './diligence.js'
 import { buildOpenApiSpec } from './openapi.js'
@@ -67,7 +69,9 @@ import { evaluateVerdict } from './verdict.js'
 
 assertConfigured()
 
-const app = new Hono()
+const app = new Hono<{
+  Variables: { verifiedAnchorAttestation: VerifiedAttestationForAnchoring }
+}>()
 
 // CORS for the browser "instant web check" widget. Scoped to the /web/* routes
 // so the rest of the API stays same-origin/agent-facing. Allowed origins are
@@ -285,16 +289,27 @@ const validateAnchorRequest: MiddlewareHandler = async (c, next) => {
   if (!anchoringEnabled()) {
     return c.json({ error: 'on-chain anchoring is not configured on this deployment' }, 503)
   }
+  const declaredLength = Number(c.req.header('content-length') ?? '0')
+  if (Number.isFinite(declaredLength) && declaredLength > 256 * 1024) {
+    return c.json({ error: 'attestation envelope must be at most 256 KiB' }, 413)
+  }
+
   let body: unknown
   try {
-    body = await c.req.raw.clone().json()
+    const rawBody = await c.req.raw.clone().text()
+    if (Buffer.byteLength(rawBody, 'utf8') > 256 * 1024) {
+      return c.json({ error: 'attestation envelope must be at most 256 KiB' }, 413)
+    }
+    body = JSON.parse(rawBody)
   } catch {
-    return c.json({ error: 'expected JSON body with a "signature" field' }, 400)
+    return c.json({ error: 'expected a complete signed attestation envelope as JSON' }, 400)
   }
-  const signature = (body as { signature?: unknown })?.signature
-  if (typeof signature !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(signature)) {
-    return c.json({ error: 'signature must be a 64-byte Ed25519 signature in base64url' }, 400)
+
+  const verification = verifyAttestationForAnchoring(body)
+  if (!verification.valid) {
+    return c.json({ error: verification.error }, verification.status)
   }
+  c.set('verifiedAnchorAttestation', verification.attestation)
   await next()
 }
 
@@ -944,7 +959,8 @@ function handleUpstreamError(c: any, err: unknown) {
 // ---------------------------------------------------------------------
 // On-chain anchoring (Tempo) — optional, decoupled from paid checks.
 //
-//   POST /anchor       body: { signature }  → records keccak256(signature)
+//   POST /anchor       body: complete signed envelope → verifies it, then
+//                       records keccak256(signature)
 //                       on the Tempo AttestationRegistry. Paid (gas-backed).
 //   GET  /anchored?signature=...            → free: is this attestation
 //                       anchored on-chain, and when?
@@ -990,17 +1006,9 @@ app.post(
         503
       )
     }
-    let body: { signature?: string }
+    const verified = c.get('verifiedAnchorAttestation')
     try {
-      body = await c.req.json()
-    } catch {
-      return c.json({ error: 'expected JSON body with a "signature" field' }, 400)
-    }
-    if (!body.signature || body.signature.length < 16) {
-      return c.json({ error: 'provide the attestation "signature" (base64url) to anchor' }, 400)
-    }
-    try {
-      const { anchorHash, txHash, alreadyAnchored } = await anchorSignature(body.signature)
+      const { anchorHash, txHash, alreadyAnchored } = await anchorSignature(verified.signature)
       return c.json(
         attest({
           anchor_hash: anchorHash,
@@ -1008,9 +1016,12 @@ app.post(
           already_anchored: alreadyAnchored,
           chain: 'Tempo',
           contract: config.anchor.contractAddress,
+          attestation_key_id: verified.keyId,
+          attestation_key_status: verified.keyStatus,
+          attestation_issued_at: verified.issuedAt,
           note: alreadyAnchored
-            ? 'This attestation was already anchored on-chain; no new transaction was sent.'
-            : 'Attestation hash anchored on Tempo. Anyone can verify it via GET /anchored.',
+            ? 'This verified OnchainDiligence attestation was already anchored; no new transaction was sent.'
+            : 'Verified OnchainDiligence attestation hash anchored on Tempo. Anyone can check it via GET /anchored.',
         })
       )
     } catch (err) {

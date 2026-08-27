@@ -313,9 +313,12 @@ export function buildOpenApiSpec() {
           tags: ['Checks'],
           summary: 'Anchor an attestation on Tempo',
           description:
-            'Records the keccak256 hash of an attestation signature on the ' +
+            'Cryptographically verifies a complete OnchainDiligence v2 compliance ' +
+            'attestation against the published key registry before payment, then ' +
+            'records the keccak256 hash of its signature on the ' +
             'Tempo AttestationRegistry contract, giving independent, ' +
             'timestamped, tamper-evident proof that the attestation existed. ' +
+            'Unknown, revoked, compromised, malformed, or tampered attestations are rejected. ' +
             'Only the hash is stored on-chain — no subject data. Idempotent: ' +
             're-anchoring an already-anchored attestation sends no new transaction.',
           operationId: 'anchorAttestation',
@@ -324,14 +327,7 @@ export function buildOpenApiSpec() {
             content: {
               'application/json': {
                 schema: {
-                  type: 'object',
-                  required: ['signature'],
-                  properties: {
-                    signature: {
-                      type: 'string',
-                      description: 'The attestation Ed25519 signature (base64url).',
-                    },
-                  },
+                  $ref: '#/components/schemas/AnchorableAttestationEnvelope',
                 },
               },
             },
@@ -346,6 +342,8 @@ export function buildOpenApiSpec() {
               },
             },
             '400': { $ref: '#/components/responses/BadRequest' },
+            '413': { description: 'Attestation envelope exceeds 256 KiB.' },
+            '422': { description: 'Attestation is well-formed but not authentic or anchorable.' },
             '402': { $ref: '#/components/responses/PaymentRequired' },
             '502': { $ref: '#/components/responses/UpstreamError' },
             '503': { $ref: '#/components/responses/Unavailable' },
@@ -474,6 +472,9 @@ export function buildOpenApiSpec() {
             already_anchored: { type: 'boolean' },
             chain: { type: 'string', example: 'Tempo' },
             contract: { type: 'string' },
+            attestation_key_id: { type: 'string' },
+            attestation_key_status: { type: 'string', enum: ['active', 'retired'] },
+            attestation_issued_at: { type: 'string', format: 'date-time' },
             note: { type: 'string' },
             attestation: { $ref: '#/components/schemas/Attestation' },
           },
@@ -487,6 +488,44 @@ export function buildOpenApiSpec() {
             algorithm: { type: 'string', example: 'ed25519' },
             signature: { type: 'string', description: 'base64url signature.' },
             issued_at: { type: 'string', format: 'date-time' },
+          },
+        },
+        AnchorableAttestationEnvelope: {
+          type: 'object',
+          required: ['data', 'attestation'],
+          properties: {
+            data: {
+              description: 'The exact normalized data object returned in the signed response.',
+            },
+            attestation: {
+              type: 'object',
+              required: [
+                'signed',
+                'schema_version',
+                'issuer',
+                'purpose',
+                'issued_at',
+                'key_id',
+                'algorithm',
+                'canonicalization',
+                'signature',
+              ],
+              properties: {
+                signed: { const: true },
+                schema_version: { const: 'onchaindiligence.attestation.v2' },
+                issuer: { const: 'https://api.onchaindiligence.com' },
+                purpose: { const: 'compliance-screening-result' },
+                issued_at: { type: 'string', format: 'date-time' },
+                key_id: { type: 'string', maxLength: 128 },
+                algorithm: { const: 'ed25519' },
+                canonicalization: { const: 'RFC8785' },
+                signature: {
+                  type: 'string',
+                  pattern: '^[A-Za-z0-9_-]{86}$',
+                  description: '64-byte Ed25519 signature encoded as unpadded base64url.',
+                },
+              },
+            },
           },
         },
         SdnMatch: {

@@ -33,7 +33,14 @@
  *   node -e "const c=require('crypto');const {publicKey,privateKey}=c.generateKeyPairSync('ed25519');console.log('PRIVATE (set as ATTESTATION_PRIVATE_KEY, keep secret):\\n'+privateKey.export({type:'pkcs8',format:'pem'}));console.log('PUBLIC (informational):\\n'+publicKey.export({type:'spki',format:'pem'}))"
  */
 
-import { createPrivateKey, createPublicKey, createHash, sign as cryptoSign, type KeyObject } from 'node:crypto'
+import {
+  createPrivateKey,
+  createPublicKey,
+  createHash,
+  sign as cryptoSign,
+  verify as cryptoVerify,
+  type KeyObject,
+} from 'node:crypto'
 import { canonicalizeJson, normalizeJson } from './canonicalJson.js'
 import {
   HISTORICAL_ATTESTATION_KEYS,
@@ -144,6 +151,140 @@ export function buildAttestationSigningInput(
     issued_at: issuedAt,
     key_id: signingKeyId,
   })
+}
+
+export interface VerifiedAttestationForAnchoring {
+  signature: string
+  keyId: string
+  keyStatus: AttestationKeyRecord['status']
+  issuedAt: string
+}
+
+export type AnchorAttestationVerification =
+  | { valid: true; attestation: VerifiedAttestationForAnchoring }
+  | { valid: false; status: 400 | 422; error: string }
+
+type AttestationKeyResolver = (requestedKeyId: string) => AttestationKeyRecord | null
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Verify that an anchor request contains a complete, authentic v2 compliance
+ * attestation issued by this service. Syntax-only signature checks are not
+ * enough: arbitrary 64-byte values must never be written to the registry as
+ * though OnchainDiligence had attested them.
+ *
+ * The resolver parameter exists so key-state policy can be tested without
+ * mutating the immutable production key history.
+ */
+export function verifyAttestationForAnchoring(
+  envelope: unknown,
+  resolveKey: AttestationKeyResolver = getAttestationKeyRecord
+): AnchorAttestationVerification {
+  if (!isObject(envelope) || !Object.hasOwn(envelope, 'data') || !isObject(envelope.attestation)) {
+    return {
+      valid: false,
+      status: 400,
+      error: 'expected a complete signed attestation envelope with "data" and "attestation" fields',
+    }
+  }
+
+  const metadata = envelope.attestation
+  if (
+    metadata.signed !== true ||
+    metadata.schema_version !== ATTESTATION_SCHEMA_VERSION ||
+    metadata.issuer !== ATTESTATION_ISSUER ||
+    metadata.purpose !== ATTESTATION_PURPOSE ||
+    metadata.algorithm !== 'ed25519' ||
+    metadata.canonicalization !== 'RFC8785'
+  ) {
+    return {
+      valid: false,
+      status: 422,
+      error: 'attestation metadata is not an anchorable OnchainDiligence v2 compliance attestation',
+    }
+  }
+
+  const issuedAt = metadata.issued_at
+  const requestedKeyId = metadata.key_id
+  const signature = metadata.signature
+  if (
+    typeof issuedAt !== 'string' ||
+    !Number.isFinite(Date.parse(issuedAt)) ||
+    new Date(issuedAt).toISOString() !== issuedAt ||
+    typeof requestedKeyId !== 'string' ||
+    requestedKeyId.length === 0 ||
+    requestedKeyId.length > 128 ||
+    typeof signature !== 'string' ||
+    !/^[A-Za-z0-9_-]{86}$/.test(signature) ||
+    Buffer.from(signature, 'base64url').length !== 64
+  ) {
+    return {
+      valid: false,
+      status: 400,
+      error: 'attestation issued_at, key_id, or Ed25519 signature has an invalid format',
+    }
+  }
+
+  const key = resolveKey(requestedKeyId)
+  if (!key) {
+    return { valid: false, status: 422, error: 'attestation key_id is not in the issuer key registry' }
+  }
+  if (key.status === 'revoked' || key.status === 'compromised') {
+    return {
+      valid: false,
+      status: 422,
+      error: `attestation key is ${key.status} and cannot be used for anchoring`,
+    }
+  }
+
+  const issuedAtMs = Date.parse(issuedAt)
+  const validFromMs = key.valid_from ? Date.parse(key.valid_from) : Number.NEGATIVE_INFINITY
+  const validUntilMs = key.valid_until ? Date.parse(key.valid_until) : Number.POSITIVE_INFINITY
+  if (
+    (!Number.isFinite(validFromMs) && validFromMs !== Number.NEGATIVE_INFINITY) ||
+    (!Number.isFinite(validUntilMs) && validUntilMs !== Number.POSITIVE_INFINITY) ||
+    issuedAtMs < validFromMs ||
+    issuedAtMs > validUntilMs
+  ) {
+    return {
+      valid: false,
+      status: 422,
+      error: 'attestation was issued outside the registered validity period for its key',
+    }
+  }
+
+  try {
+    const signingInput = buildAttestationSigningInput(
+      envelope.data,
+      issuedAt,
+      requestedKeyId,
+      ATTESTATION_PURPOSE
+    )
+    const verified = cryptoVerify(
+      null,
+      Buffer.from(signingInput, 'utf8'),
+      createPublicKey(key.public_key_pem),
+      Buffer.from(signature, 'base64url')
+    )
+    if (!verified) {
+      return { valid: false, status: 422, error: 'attestation signature verification failed' }
+    }
+  } catch {
+    return { valid: false, status: 422, error: 'attestation could not be cryptographically verified' }
+  }
+
+  return {
+    valid: true,
+    attestation: {
+      signature,
+      keyId: requestedKeyId,
+      keyStatus: key.status,
+      issuedAt,
+    },
+  }
 }
 
 /**
