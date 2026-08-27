@@ -32,6 +32,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-012 | Production dependency vulnerabilities, especially API/MCP/SDK/Tempo `viem`/`ws` chains | API, MCP, SDK, Tempo | IN PROGRESS | API, SDK and Tempo are upgraded, compatibility-tested and at zero npm advisories; MCP still has six high findings, mostly from the legacy `x402-mcp`/`x402` wallet dependency graph, and its pre-existing dirty package files are excluded from current commits |
 | OD-013 | Attestation verifier renders untrusted metadata through `innerHTML` | Site | FIXED LOCALLY | Metadata/data now use DOM nodes and `textContent`, classes are allowlisted, and baseline security headers/CSP are configured; add browser regression test, deploy and verify headers |
 | OD-014 | App database has no versioned schema, migrations, constraints or restore procedure | App | FIXED LOCALLY | Versioned baseline now defines tables, foreign keys, checks and indexes with application guidance; compare/apply in staging and complete a backup/restore drill |
+| OD-030 | GitHub Action verifies legacy v1 bytes while production paid routes emit v2 attestations | Action | FIXED LOCALLY | Action resolves the exact key, verifies v2 RFC8785 issuer/purpose bytes, retains explicit v1 compatibility, enforces lifecycle intervals/status, and passes tamper/lifecycle tests; publish a new immutable Action tag and run a paid production canary |
 
 ## Medium
 
@@ -52,6 +53,8 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-027 | MCP claims a matching sanctions programme although the oracle returns only a boolean | MCP | FIXED LOCALLY | Tool description now states that the oracle returns a boolean without programme-level case detail; publish and verify registry metadata |
 | OD-028 | Live verifier sample fetches a paid endpoint without a payment client | Site | VERIFIED | Production verifier fetches the free fixed signed `verification-fixture`; end-to-end browser verification passed without payment or a real counterparty screen |
 | OD-029 | Tempo spike documentation/scripts do not match the repository state | Tempo spike | OPEN | Decide promote/archive; align scripts, README and tested deployment path |
+| OD-031 | SDK, CLI and website still send signature-only `/anchor` requests after the API began requiring a complete authentic v2 envelope | SDK, CLI, Site | OPEN | All clients submit the complete envelope, compatibility impact is documented, tests reject signature-only calls, and published docs contain only functioning examples |
+| OD-032 | SDK, CLI and browser call verification local/offline while requiring live key-registry access and not enforcing key validity intervals | SDK, CLI, Site | OPEN | Account-free verifier accepts caller-supplied trusted key material, reports VALID/INVALID/UNVERIFIABLE, enforces lifecycle windows, CLI works with network disabled, and online discovery is explicit opt-in |
 
 ## Phase 1 change log
 
@@ -111,3 +114,10 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 - 2026-08-27: OFAC name-screen provenance now reports the full local source
   fetch timestamp as `retrieved_at`; the misleading `list_date` field was
   removed from API, MCP and the OpenAPI schema.
+- 2026-08-27: adopted Agent Evidence and Decision Provenance as the governing
+  product direction; added the v0 specification, migration plan and threat
+  model after auditing the current multi-repository implementation.
+- 2026-08-27: repaired the GitHub Action's production v2 verifier. It now
+  resolves the exact historical key, reconstructs RFC8785 issuer/purpose bytes,
+  enforces key status and validity windows, and retains an explicit legacy v1
+  path without downgrade fallback.

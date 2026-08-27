@@ -2,6 +2,13 @@
 
 Last updated: 2026-08-27
 
+> **Superseded for forward implementation on 2026-08-27.** The governing
+> direction is now Agent Evidence and Decision Provenance. Use
+> `docs/PRODUCT_DIRECTION.md`, `docs/AGENT_EVIDENCE_V0.md`,
+> `docs/MIGRATION_PLAN.md`, and `docs/THREAT_MODEL.md`. The phases below are
+> retained only as historical audit context; the FLOP phase is not an active
+> implementation priority.
+
 Security and correctness findings in `AUDIT_FINDINGS.md` take precedence over
 new product surface. Compliance features should not multiply until the shared
 trust model is reliable.
