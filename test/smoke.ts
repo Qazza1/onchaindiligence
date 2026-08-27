@@ -28,16 +28,19 @@ function queueMock(status: number, body: unknown) {
 global.fetch = (async (..._args: any[]) => {
   const next = mockQueue.shift()
   if (!next) throw new Error('Test error: no mock queued for this fetch call')
-  return {
-    ok: next.status >= 200 && next.status < 300,
+  return new Response(JSON.stringify(next.body), {
     status: next.status,
-    json: async () => next.body,
-  } as Response
+    headers: { 'Content-Type': 'application/json' },
+  })
 }) as typeof fetch
 
 // Set fake env vars before config.ts reads them.
 process.env.COMPANIES_HOUSE_API_KEY = 'fake-key-for-tests'
 process.env.MPP_RECIPIENT_ADDRESS = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb9226d'
+process.env.TEMPO_CURRENCY_ADDRESS = '0x20c0000000000000000000000000000000000000'
+process.env.MPP_SECRET_KEY = 'test-mpp-secret-that-is-at-least-32-characters'
+process.env.ATTESTATION_SERVICE_TOKEN = 'test-attestation-token-at-least-32-characters'
+process.env.TEMPO_TESTNET = 'true'
 
 const { screenAddress } = await import('../src/chainalysis.js')
 const { checkCompany, CompanyNotFoundError } = await import('../src/companiesHouse.js')
@@ -122,6 +125,26 @@ await test('direct exposure is partial, never complete, when a counterparty scre
   assert.strictEqual(result.status, 'partial')
   assert.strictEqual(result.evaluated, false)
   assert.strictEqual(result.screening_failures, 1)
+})
+
+await test('the 25-counterparty cap is reported as partial rather than clean', async () => {
+  const subject = '0x0000000000000000000000000000000000000001'
+  const rows = Array.from({ length: 26 }, (_, index) => ({
+    sender: subject,
+    recipient: `0x${(index + 2).toString(16).padStart(40, '0')}`,
+  }))
+  queueMock(200, { data: rows })
+  for (let index = 0; index < 25; index++) {
+    queueMock(200, { jsonrpc: '2.0', id: index + 1, result: `0x${'0'.repeat(64)}` })
+  }
+
+  const result = await checkDirectExposure(subject)
+  assert.strictEqual(result.status, 'partial')
+  assert.strictEqual(result.evaluated, false)
+  assert.strictEqual(result.counterparties_found, 26)
+  assert.strictEqual(result.counterparties_considered, 25)
+  assert.strictEqual(result.counterparties_screened, 25)
+  assert.strictEqual(result.counterparties_omitted, 1)
 })
 
 console.log('\nCanonical verdict policy:')
@@ -546,6 +569,59 @@ await test('single ok / nothing attempted → not total failure', async () => {
   assert.strictEqual(isTotalFailure({ ok: true }, null), false)
   assert.strictEqual(isTotalFailure(null, null), false)
 })
+
+// --- Paid-route preflight ordering --------------------------------------
+console.log('\nPaid route preflight guards:')
+
+// Re-enable signing after the attestation-disabled test, then import the app.
+// All requests below fail in side-effect-free validation before health probes
+// or payment middleware, so no network mock is consumed and no 402 is issued.
+const { privateKey: routeTestKey } = crypto.generateKeyPairSync('ed25519')
+process.env.ATTESTATION_PRIVATE_KEY = routeTestKey.export({
+  type: 'pkcs8',
+  format: 'pem',
+}) as string
+att.__reinit()
+const { default: routeApp } = await import('../src/server.js')
+
+const expectPrePaymentRejection = async (
+  path: string,
+  expectedStatus: 400 | 503,
+  init?: RequestInit
+) => {
+  const response = await routeApp.request(path, init)
+  assert.strictEqual(response.status, expectedStatus)
+  assert.notStrictEqual(response.status, 402)
+  assert.strictEqual(response.headers.get('WWW-Authenticate'), null)
+}
+
+const invalidPaidRequests: Array<[string, 400 | 503, RequestInit?]> = [
+  ['/screen/not-an-address', 400],
+  ['/verdict/not-an-address', 400],
+  ['/screen-name?name=x', 400],
+  ['/company/123456789012345678901', 400],
+  ['/us-company', 400],
+  ['/diligence', 400],
+  ['/web/screen/not-an-address', 400],
+  ['/web/screen-name?name=x', 400],
+  ['/web/company/123456789012345678901', 400],
+  ['/web/us-company', 400],
+  [
+    '/anchor',
+    503,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signature: 'invalid' }),
+    },
+  ],
+]
+
+for (const [path, status, init] of invalidPaidRequests) {
+  await test(`${path} rejects before payment`, async () => {
+    await expectPrePaymentRejection(path, status, init)
+  })
+}
 
 console.log(`\n${passed} passed, ${failed} failed`)
 

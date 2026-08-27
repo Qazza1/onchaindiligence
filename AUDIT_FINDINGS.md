@@ -22,14 +22,14 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 
 | ID | Finding | Repository | Status | Exit criteria |
 |---|---|---|---|---|
-| OD-005 | Multiple paid routes validate inputs after payment middleware | API | FIXED LOCALLY | Side-effect-free guards now precede payment on all paid routes and web wallet checks have a health gate; add route-level no-challenge tests, deploy and verify |
-| OD-006 | `/verdict` can PASS after zero or partial counterparty screening and only examines the first 25 | API | FIXED LOCALLY | Exposure now distinguishes complete/partial/failed and incomplete work yields WARN; add route-level and truncation regression tests, deploy and verify |
+| OD-005 | Multiple paid routes validate inputs after payment middleware | API | VERIFIED | All paid routes have offline no-challenge regression tests; representative production wallet, name, company, US company, diligence and web inputs returned 400 without a payment challenge |
+| OD-006 | `/verdict` can PASS after zero or partial counterparty screening and only examines the first 25 | API | FIXED LOCALLY | Exposure distinguishes complete/partial/failed and incomplete work yields WARN; regression tests cover screen failures and 26 counterparties with one omitted; verify a paid/live WARN response before closing |
 | OD-007 | Standalone MCP verdict logic has diverged from the HTTP verdict | MCP, API | VERIFIED | API owns one canonical evaluator used by public and authenticated internal routes; MCP delegation and policy contract tests pass; production internal readiness rejects unauthenticated calls, healthy MCP verdict requests reach the 402 challenge, and malformed input returns 400 without a payment challenge |
 | OD-008 | Paid MCP/API responses may be returned unsigned when signing is unavailable | MCP, API | FIXED LOCALLY | Production boot requires signing; MCP probes authenticated signing readiness before payment and never returns unsigned success; add outage integration test, deploy and verify no settlement |
 | OD-009 | Required payment/signing configuration can fail open; MCP defaults to testnet | API, MCP | VERIFIED | API and MCP require explicit payment/signing configuration; production was observed failing closed when the signing token was absent, then recovered only after the shared credential was configured and both services were redeployed |
 | OD-010 | GitHub Action downloads executable code while exposing the payer key and exits green after screening failures | Action | FIXED LOCALLY | Action uses a committed bundled payment client with pinned/locked build dependencies, passes only the payer key to it, verifies fresh signatures, and fails closed; verify bundle reproducibility in CI and publish a new immutable Action tag |
 | OD-011 | Live terms/privacy documents contain unresolved legal placeholders | Site | DECISION REQUIRED | Qualified legal review; entity, refunds, SLA, liability, governing law, retention, controller, subprocessors and transfers completed and published |
-| OD-012 | Production dependency vulnerabilities, especially API/MCP/SDK/Tempo `viem`/`ws` chains | API, MCP, SDK, Tempo | IN PROGRESS | API is upgraded, compatibility-tested, and at zero npm advisories; audit and remediate MCP, SDK, and Tempo, remove unused MCP packages, and leave no unaccepted production high findings |
+| OD-012 | Production dependency vulnerabilities, especially API/MCP/SDK/Tempo `viem`/`ws` chains | API, MCP, SDK, Tempo | IN PROGRESS | API, SDK and Tempo are upgraded, compatibility-tested and at zero npm advisories; MCP still has six high findings, mostly from the legacy `x402-mcp`/`x402` wallet dependency graph, and its pre-existing dirty package files are excluded from current commits |
 | OD-013 | Attestation verifier renders untrusted metadata through `innerHTML` | Site | FIXED LOCALLY | Metadata/data now use DOM nodes and `textContent`, classes are allowlisted, and baseline security headers/CSP are configured; add browser regression test, deploy and verify headers |
 | OD-014 | App database has no versioned schema, migrations, constraints or restore procedure | App | FIXED LOCALLY | Versioned baseline now defines tables, foreign keys, checks and indexes with application guidance; compare/apply in staging and complete a backup/restore drill |
 
@@ -95,3 +95,13 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 - 2026-08-27: production browser verification resolved the exact active key,
   verified the version 2 fixture locally, and rejected a copy with one signed
   boolean changed. Canonical signing and the free sample are now verified.
+- 2026-08-27: centralized PASS/WARN/BLOCK policy in the API; MCP now delegates
+  verdicts to an authenticated canonical route and checks its readiness before
+  payment. Offline contracts and production 401/402/invalid-input paths passed.
+- 2026-08-27: API, SDK and Tempo dependency trees were upgraded to fixed
+  viem/ws and Hono-related versions. All three report zero npm advisories and
+  pass their available build/type/test checks; MCP's legacy payment wrapper
+  remains the dependency-remediation blocker.
+- 2026-08-27: added pre-payment route regression coverage and a 26-counterparty
+  truncation case. The API now has 49 passing tests, and representative
+  malformed production requests returned 400 without payment challenges.
