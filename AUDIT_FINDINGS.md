@@ -43,7 +43,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-018 | Health checks often prove reachability rather than authenticated readiness | API | OPEN | Provider-specific probes validate usable responses/credentials and payment routes consume readiness, not generic reachability |
 | OD-019 | Documentation, prices, versions, tool counts and implementation claims have drifted | All | OPEN | Generated reference docs and automated drift checks agree with shipped route/tool manifests and package versions |
 | OD-020 | SEC company name matching silently selects ambiguous prefix/substring results | API, MCP | FIXED LOCALLY | CIK/ticker/exact-name matches resolve deterministically; prefix/substring resolves only when unique; ambiguous queries return bounded sorted candidates with no selected CIK; API tests and both typechecks pass; deploy and verify a live ambiguous query |
-| OD-021 | OFAC `list_date` is the local retrieval date, not the source list publication date | API, MCP | OPEN | Field renamed to `retrieved_at` or populated from authoritative source metadata |
+| OD-021 | OFAC `list_date` is the local retrieval date, not the source list publication date | API, MCP | FIXED LOCALLY | Both surfaces now return the full local fetch timestamp as `retrieved_at`, explicitly documented as retrieval rather than OFAC publication time; typechecks and API tests pass; deploy and verify a paid response |
 | OD-022 | `/anchor` accepts arbitrary signature-shaped data without proving it is an OnchainDiligence attestation | API, Anchor | OPEN | Complete envelope and known `key_id` signature verified before anchoring, or endpoint/documentation explicitly becomes generic blob anchoring |
 | OD-023 | Registry issuer transfer is one-step and vulnerable to irreversible operator error | Anchor | OPEN | Two-step `pendingIssuer`/`acceptIssuer`, tests, multisig ownership and operational runbook |
 | OD-024 | CI and secret scanning are incomplete; broad allowlists can suppress real secrets | All | OPEN | Test/typecheck/build/security workflows cover all repos; actions pinned to commits; secret allowlists narrowed |
@@ -108,3 +108,6 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 - 2026-08-27: SEC EDGAR lookup no longer selects the first prefix/substring
   match. Ambiguous names return a bounded deterministic candidate set with
   `match_status: ambiguous` and no selected CIK on both API and MCP surfaces.
+- 2026-08-27: OFAC name-screen provenance now reports the full local source
+  fetch timestamp as `retrieved_at`; the misleading `list_date` field was
+  removed from API, MCP and the OpenAPI schema.

@@ -507,7 +507,11 @@ export function buildOpenApiSpec() {
             normalized_query: { type: 'string' },
             hit: { type: 'boolean' },
             matches: { type: 'array', items: { $ref: '#/components/schemas/SdnMatch' } },
-            list_date: { type: 'string', nullable: true },
+            retrieved_at: {
+              type: 'string',
+              format: 'date-time',
+              description: 'When this service fetched the OFAC files; not the source publication date.',
+            },
             threshold: { type: 'number' },
             source: { type: 'string' },
             note: { type: 'string' },
