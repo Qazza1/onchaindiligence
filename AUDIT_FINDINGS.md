@@ -38,7 +38,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | ID | Finding | Repository | Status | Exit criteria |
 |---|---|---|---|---|
 | OD-015 | Only the current attestation key is published; rotation breaks historical verification | API, site, SDK | IN PROGRESS | Source-controlled registry and exact-key verification are implemented locally; deploy them, record the current key's activation time, perform the first controlled rotation, and retain the old public key with explicit status |
-| OD-016 | Signing uses ordinary `JSON.stringify`, not canonical cross-language encoding or domain separation | API, SDK, site | FIXED LOCALLY | Version 2 uses RFC 8785 canonical JSON with issuer, purpose and schema version; SDK/site retain legacy v1 verification; deploy and cross-runtime test fixtures |
+| OD-016 | Signing uses ordinary `JSON.stringify`, not canonical cross-language encoding or domain separation | API, SDK, site | VERIFIED | Production version 2 uses RFC 8785 canonical JSON with issuer, purpose and schema version; browser verification passed against the exact registry key and rejected one-field tampering; SDK/site retain legacy v1 verification |
 | OD-017 | Serverless rate limiting is instance-local; webhook body was unbounded; app mutations are unlimited | API, app | IN PROGRESS | Webhook now has a local 1 MiB cap; shared rate limits and route-specific quotas remain to be implemented and load-tested |
 | OD-018 | Health checks often prove reachability rather than authenticated readiness | API | OPEN | Provider-specific probes validate usable responses/credentials and payment routes consume readiness, not generic reachability |
 | OD-019 | Documentation, prices, versions, tool counts and implementation claims have drifted | All | OPEN | Generated reference docs and automated drift checks agree with shipped route/tool manifests and package versions |
@@ -50,7 +50,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-025 | Case wallet insertion does not first authorize ownership of the parent case | App | FIXED LOCALLY | Add-wallet now inserts through an owner-filtered parent SELECT and deletion joins through the owner-filtered case; add cross-tenant tests after authentication lands |
 | OD-026 | User strings are weakly bounded and raw database error messages can reach clients | App | FIXED LOCALLY | Case/watchlist strings now have application and database size limits; database details remain server-side and clients receive stable generic errors |
 | OD-027 | MCP claims a matching sanctions programme although the oracle returns only a boolean | MCP | FIXED LOCALLY | Tool description now states that the oracle returns a boolean without programme-level case detail; publish and verify registry metadata |
-| OD-028 | Live verifier sample fetches a paid endpoint without a payment client | Site | FIXED LOCALLY | Verifier now fetches a fixed signed `verification-fixture` from a free sandbox route; deploy and browser-test the sample end to end |
+| OD-028 | Live verifier sample fetches a paid endpoint without a payment client | Site | VERIFIED | Production verifier fetches the free fixed signed `verification-fixture`; end-to-end browser verification passed without payment or a real counterparty screen |
 | OD-029 | Tempo spike documentation/scripts do not match the repository state | Tempo spike | OPEN | Decide promote/archive; align scripts, README and tested deployment path |
 
 ## Phase 1 change log
@@ -92,3 +92,6 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
   an exact-key status registry, legacy verification in SDK/site, and a fixed
   signed sandbox fixture for the verifier sample. First controlled key rotation
   and production interoperability verification remain.
+- 2026-08-27: production browser verification resolved the exact active key,
+  verified the version 2 fixture locally, and rejected a copy with one signed
+  boolean changed. Canonical signing and the free sample are now verified.
