@@ -12,12 +12,12 @@
     "test": "tsx test/smoke.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^2.0.5",
+    "@hono/node-server": "^2.1.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
-    "hono": "^4.6.0",
+    "hono": "^4.13.5",
     "mppx": "^0.7.0",
-    "viem": "^2.52.2",
+    "viem": "^2.56.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
