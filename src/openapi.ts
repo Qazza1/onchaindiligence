@@ -229,7 +229,8 @@ export function buildOpenApiSpec() {
             'Looks up an SEC-registered (public) US company via EDGAR by ' +
             'ticker, CIK, or name: registered name, CIK, industry (SIC), ' +
             'state of incorporation, exchanges/tickers, business address, and ' +
-            'most recent filing. Scope is public companies and funds only — ' +
+            'most recent filing. Ambiguous name searches return explicit ' +
+            'candidates and do not select a company. Scope is public companies and funds only — ' +
             'private US companies register at the state level and are not in ' +
             'EDGAR; the result carries an explicit coverage note.',
           operationId: 'verifyUsCompany',
@@ -634,6 +635,11 @@ export function buildOpenApiSpec() {
           type: 'object',
           properties: {
             source: { type: 'string', example: 'SEC EDGAR' },
+            match_status: { type: 'string', enum: ['resolved', 'ambiguous'] },
+            matched_by: {
+              type: 'string',
+              enum: ['cik', 'ticker', 'exact_name', 'unique_prefix', 'unique_substring'],
+            },
             cik: { type: 'string', example: '0000320193' },
             name: { type: 'string', nullable: true, example: 'Apple Inc.' },
             former_names: { type: 'array', items: { type: 'string' } },
@@ -645,6 +651,21 @@ export function buildOpenApiSpec() {
             exchanges: { type: 'array', items: { type: 'string' } },
             business_address: { type: 'object', nullable: true },
             latest_filing: { type: 'object', nullable: true },
+            query: { type: 'string', description: 'Original query when the result is ambiguous.' },
+            candidate_count: { type: 'integer', minimum: 2 },
+            candidates: {
+              type: 'array',
+              maxItems: 10,
+              items: {
+                type: 'object',
+                properties: {
+                  cik: { type: 'string' },
+                  ticker: { type: 'string' },
+                  name: { type: 'string' },
+                },
+              },
+            },
+            resolution_note: { type: 'string' },
             coverage_note: {
               type: 'string',
               description:

@@ -223,6 +223,65 @@ await test('PASS requires a clean subject and complete exposure evaluation', asy
   assert.ok(result.verdict_basis.live_signals.includes('direct_counterparty_exposure'))
 })
 
+console.log('\nSEC EDGAR query resolution:')
+
+const { resolveCompanyQuery, checkUSCompany } = await import('../src/secEdgar.js')
+const edgarEntries = [
+  { cik_str: 1, ticker: 'ALP', title: 'ALPHA HOLDINGS INC' },
+  { cik_str: 2, ticker: 'ALPS', title: 'ALPHA SOFTWARE CORP' },
+  { cik_str: 3, ticker: 'BETA', title: 'BETA SYSTEMS INC' },
+  { cik_str: 4, ticker: 'BETA.B', title: 'BETA SYSTEMS INC' },
+]
+
+await test('explicit CIK and exact ticker resolve deterministically', async () => {
+  assert.deepStrictEqual(resolveCompanyQuery('CIK3', edgarEntries), {
+    status: 'resolved',
+    cik: '0000000003',
+    matched_by: 'cik',
+  })
+  assert.deepStrictEqual(resolveCompanyQuery('ALP', edgarEntries), {
+    status: 'resolved',
+    cik: '0000000001',
+    matched_by: 'ticker',
+  })
+})
+
+await test('duplicate exact legal names return candidates, never a selected filer', async () => {
+  const result = resolveCompanyQuery('Beta Systems Inc', edgarEntries)
+  assert.strictEqual(result?.status, 'ambiguous')
+  if (result?.status !== 'ambiguous') assert.fail('expected ambiguous resolution')
+  assert.strictEqual(result.candidate_count, 2)
+  assert.deepStrictEqual(result.candidates.map((candidate) => candidate.cik), [
+    '0000000003',
+    '0000000004',
+  ])
+})
+
+await test('ambiguous prefixes return a deterministic candidate set', async () => {
+  const result = resolveCompanyQuery('Alpha', edgarEntries)
+  assert.strictEqual(result?.status, 'ambiguous')
+  if (result?.status !== 'ambiguous') assert.fail('expected ambiguous resolution')
+  assert.deepStrictEqual(result.candidates.map((candidate) => candidate.ticker), ['ALP', 'ALPS'])
+})
+
+await test('a unique substring may resolve and an absent name does not', async () => {
+  assert.deepStrictEqual(resolveCompanyQuery('Software', edgarEntries), {
+    status: 'resolved',
+    cik: '0000000002',
+    matched_by: 'unique_substring',
+  })
+  assert.strictEqual(resolveCompanyQuery('No Such Filer', edgarEntries), null)
+})
+
+await test('ambiguous company lookup returns candidates without fetching a selected filing', async () => {
+  queueMock(200, Object.fromEntries(edgarEntries.map((entry, index) => [index, entry])))
+  const result = await checkUSCompany('Alpha')
+  assert.strictEqual(result.match_status, 'ambiguous')
+  if (result.match_status !== 'ambiguous') assert.fail('expected ambiguous company result')
+  assert.strictEqual(result.candidate_count, 2)
+  assert.strictEqual('cik' in result, false)
+})
+
 // NOTE: the live true/false behaviour of the oracle (clean address -> false,
 // sanctioned address -> true) requires a real Ethereum RPC call and is
 // verified on deploy, not in these offline tests. Chainalysis's documented
