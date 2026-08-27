@@ -1,6 +1,6 @@
 # OnchainDiligence audit findings register
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 This is the durable source of truth for the August 2026 audit. A finding is not
 closed merely because code was written: `FIXED LOCALLY` still requires review,
@@ -13,7 +13,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 
 | ID | Finding | Repository | Status | Exit criteria |
 |---|---|---|---|---|
-| OD-001 | Public `/attest` signs arbitrary caller-supplied claims with the production key | API, app, MCP | FIXED LOCALLY | Authenticated server-to-server route deployed; app export rebuilt behind authenticated backend; old key rotated and historical key status published; production canary receives 401 |
+| OD-001 | Public `/attest` signs arbitrary caller-supplied claims with the production key | API, app, MCP | IN PROGRESS | Authenticated server-to-server route deployed and production canary receives 401; app export rebuilt behind authenticated backend; old key rotated and historical key status published |
 | OD-002 | Watchlist, case, notes, deletion and rescreen APIs have no authentication or tenant isolation | App | DECISION REQUIRED | Identity provider selected; organisation/user IDs replace `OWNER = default`; every query is authorized; cron uses separate machine authentication; access-control tests pass |
 | OD-003 | JSON-RPC errors/malformed oracle responses become or are cached as clean | App | FIXED LOCALLY | Exact ABI boolean decoder deployed in browser and server functions; error/malformed-result tests pass; existing clean cache invalidated |
 | OD-004 | Tempo webhook reserves its dedupe ID before processing, permanently dropping failed retries | App | FIXED LOCALLY | Failure releases reservation or uses a transactional state machine; failed screening returns non-2xx; retry integration test passes |
@@ -26,7 +26,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-006 | `/verdict` can PASS after zero or partial counterparty screening and only examines the first 25 | API | FIXED LOCALLY | Exposure now distinguishes complete/partial/failed and incomplete work yields WARN; add route-level and truncation regression tests, deploy and verify |
 | OD-007 | Standalone MCP verdict logic has diverged from the HTTP verdict | MCP, API | OPEN | One shared verdict implementation or one canonical signed API call serves every channel; contract tests compare outputs |
 | OD-008 | Paid MCP/API responses may be returned unsigned when signing is unavailable | MCP, API | FIXED LOCALLY | Production boot requires signing; MCP probes authenticated signing readiness before payment and never returns unsigned success; add outage integration test, deploy and verify no settlement |
-| OD-009 | Required payment/signing configuration can fail open; MCP defaults to testnet | API, MCP | FIXED LOCALLY | API requires payment/signing credentials; MCP requires explicit network, payment credentials and signing token with length validation; deploy and verify startup failures |
+| OD-009 | Required payment/signing configuration can fail open; MCP defaults to testnet | API, MCP | VERIFIED | API and MCP require explicit payment/signing configuration; production was observed failing closed when the signing token was absent, then recovered only after the shared credential was configured and both services were redeployed |
 | OD-010 | GitHub Action downloads executable code while exposing the payer key and exits green after screening failures | Action | FIXED LOCALLY | Action uses a committed bundled payment client with pinned/locked build dependencies, passes only the payer key to it, verifies fresh signatures, and fails closed; verify bundle reproducibility in CI and publish a new immutable Action tag |
 | OD-011 | Live terms/privacy documents contain unresolved legal placeholders | Site | DECISION REQUIRED | Qualified legal review; entity, refunds, SLA, liability, governing law, retention, controller, subprocessors and transfers completed and published |
 | OD-012 | Production dependency vulnerabilities, especially API/MCP/SDK/Tempo `viem`/`ws` chains | API, MCP, SDK, Tempo | OPEN | Dependencies upgraded and compatibility-tested; unused MCP packages removed; production audit has no unaccepted high findings |
@@ -37,8 +37,8 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 
 | ID | Finding | Repository | Status | Exit criteria |
 |---|---|---|---|---|
-| OD-015 | Only the current attestation key is published; rotation breaks historical verification | API, site, SDK | OPEN | Immutable registry indexed by `key_id` publishes active/retired/revoked/compromised keys; verifier selects the exact key |
-| OD-016 | Signing uses ordinary `JSON.stringify`, not canonical cross-language encoding or domain separation | API, SDK, site | OPEN | Versioned RFC 8785 JCS or equivalent scheme added with issuer, purpose and schema version; legacy verification retained |
+| OD-015 | Only the current attestation key is published; rotation breaks historical verification | API, site, SDK | IN PROGRESS | Source-controlled registry and exact-key verification are implemented locally; deploy them, record the current key's activation time, perform the first controlled rotation, and retain the old public key with explicit status |
+| OD-016 | Signing uses ordinary `JSON.stringify`, not canonical cross-language encoding or domain separation | API, SDK, site | FIXED LOCALLY | Version 2 uses RFC 8785 canonical JSON with issuer, purpose and schema version; SDK/site retain legacy v1 verification; deploy and cross-runtime test fixtures |
 | OD-017 | Serverless rate limiting is instance-local; webhook body was unbounded; app mutations are unlimited | API, app | IN PROGRESS | Webhook now has a local 1 MiB cap; shared rate limits and route-specific quotas remain to be implemented and load-tested |
 | OD-018 | Health checks often prove reachability rather than authenticated readiness | API | OPEN | Provider-specific probes validate usable responses/credentials and payment routes consume readiness, not generic reachability |
 | OD-019 | Documentation, prices, versions, tool counts and implementation claims have drifted | All | OPEN | Generated reference docs and automated drift checks agree with shipped route/tool manifests and package versions |
@@ -50,7 +50,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-025 | Case wallet insertion does not first authorize ownership of the parent case | App | FIXED LOCALLY | Add-wallet now inserts through an owner-filtered parent SELECT and deletion joins through the owner-filtered case; add cross-tenant tests after authentication lands |
 | OD-026 | User strings are weakly bounded and raw database error messages can reach clients | App | FIXED LOCALLY | Case/watchlist strings now have application and database size limits; database details remain server-side and clients receive stable generic errors |
 | OD-027 | MCP claims a matching sanctions programme although the oracle returns only a boolean | MCP | FIXED LOCALLY | Tool description now states that the oracle returns a boolean without programme-level case detail; publish and verify registry metadata |
-| OD-028 | Live verifier sample fetches a paid endpoint without a payment client | Site | OPEN | Static valid signed fixture or dedicated non-production sample endpoint verifies successfully without payment |
+| OD-028 | Live verifier sample fetches a paid endpoint without a payment client | Site | FIXED LOCALLY | Verifier now fetches a fixed signed `verification-fixture` from a free sandbox route; deploy and browser-test the sample end to end |
 | OD-029 | Tempo spike documentation/scripts do not match the repository state | Tempo spike | OPEN | Decide promote/archive; align scripts, README and tested deployment path |
 
 ## Phase 1 change log
@@ -84,3 +84,11 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 - 2026-08-26: app now has a versioned PostgreSQL baseline with keys, foreign
   keys, checks and indexes. Case-wallet mutation is owner-bound in SQL; user
   strings are bounded and raw database errors no longer reach clients.
+- 2026-08-27: configured one generated Production-only internal attestation
+  credential in the API and MCP Vercel projects, redeployed both, and verified
+  API health 200, unauthenticated signer calls 401, MCP root 200 and unpaid paid
+  route 402. No `.env` file was accessed.
+- 2026-08-27: added version 2 domain-separated RFC 8785 attestation signing,
+  an exact-key status registry, legacy verification in SDK/site, and a fixed
+  signed sandbox fixture for the verifier sample. First controlled key rotation
+  and production interoperability verification remain.

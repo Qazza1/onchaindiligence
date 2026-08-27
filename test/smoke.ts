@@ -306,6 +306,14 @@ console.log('\nAttestation:')
 
 const crypto = await import('node:crypto')
 const att = await import('../src/attestation.js')
+const { canonicalizeJson } = await import('../src/canonicalJson.js')
+
+await test('canonical JSON sorts object keys recursively and preserves array order', async () => {
+  assert.strictEqual(
+    canonicalizeJson({ z: 2, a: { y: true, x: ['b', 'a'] }, n: -0 }),
+    '{"a":{"x":["b","a"],"y":true},"n":0,"z":2}'
+  )
+})
 
 await test('signs a response and the signature verifies with the public key', async () => {
   const { privateKey } = crypto.generateKeyPairSync('ed25519')
@@ -315,12 +323,16 @@ await test('signs a response and the signature verifies with the public key', as
   assert.strictEqual(att.attestationEnabled(), true)
   const envelope: any = att.attest({ address: '0xABC', sanctioned: false })
   assert.strictEqual(envelope.attestation.signed, true)
+  assert.strictEqual(envelope.attestation.schema_version, att.ATTESTATION_SCHEMA_VERSION)
+  assert.strictEqual(envelope.attestation.issuer, att.ATTESTATION_ISSUER)
+  assert.strictEqual(envelope.attestation.purpose, att.ATTESTATION_PURPOSE)
+  assert.strictEqual(envelope.attestation.canonicalization, 'RFC8785')
 
-  const signingInput = JSON.stringify({
-    data: envelope.data,
-    issued_at: envelope.attestation.issued_at,
-    key_id: envelope.attestation.key_id,
-  })
+  const signingInput = att.buildAttestationSigningInput(
+    envelope.data,
+    envelope.attestation.issued_at,
+    envelope.attestation.key_id
+  )
   const pub = crypto.createPublicKey(att.getPublicKeyPem()!)
   const ok = crypto.verify(
     null,
@@ -329,6 +341,12 @@ await test('signs a response and the signature verifies with the public key', as
     Buffer.from(envelope.attestation.signature, 'base64url')
   )
   assert.strictEqual(ok, true)
+
+  const records = att.getAttestationKeyRecords()
+  assert.strictEqual(records.length, 1)
+  assert.strictEqual(records[0].key_id, envelope.attestation.key_id)
+  assert.strictEqual(records[0].status, 'active')
+  assert.strictEqual(att.getAttestationKeyRecord(envelope.attestation.key_id)?.public_key_pem, att.getPublicKeyPem())
 })
 
 await test('tampered data fails verification', async () => {
@@ -337,11 +355,11 @@ await test('tampered data fails verification', async () => {
   att.__reinit()
 
   const envelope: any = att.attest({ sanctioned: false })
-  const tampered = JSON.stringify({
-    data: { sanctioned: true }, // flipped
-    issued_at: envelope.attestation.issued_at,
-    key_id: envelope.attestation.key_id,
-  })
+  const tampered = att.buildAttestationSigningInput(
+    { sanctioned: true }, // flipped
+    envelope.attestation.issued_at,
+    envelope.attestation.key_id
+  )
   const pub = crypto.createPublicKey(att.getPublicKeyPem()!)
   const ok = crypto.verify(
     null,

@@ -44,7 +44,7 @@ Prices are differentiated by value delivered and cost to serve, not a flat rate:
 
 ## Signed attestations
 
-Every paid response includes an Ed25519 signature over the result data plus an issue timestamp. Anyone can verify a stored response against the public key at `/.well-known/attestation-key` — without trusting or re-contacting this service. Change one field of a stored result and verification fails. This is the point of the product: an auditable, tamper-evident record that a check happened, at a specific moment, with a specific answer.
+Every paid response includes a versioned Ed25519 attestation. Version 2 signs RFC 8785 canonical JSON containing the result, issue timestamp, exact key ID, issuer, purpose, and schema version. Verifiers resolve that key ID through `/.well-known/attestation-keys/{key_id}`, which publishes active, retired, revoked, and compromised status. Legacy version 1 verification remains supported. Change one signed field and verification fails.
 
 ## How payment works
 

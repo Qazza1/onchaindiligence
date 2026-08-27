@@ -1,6 +1,6 @@
 # OnchainDiligence product roadmap
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 Security and correctness findings in `AUDIT_FINDINGS.md` take precedence over
 new product surface. Compliance features should not multiply until the shared
@@ -101,4 +101,3 @@ staging environment. It must include authorization/tenant tests, malicious RPC
 responses, webhook concurrency/retries, payment-before-validation checks,
 signature/key-rotation interoperability, dependency/secret scans, contract
 tests, and production-safe canaries that spend no real money.
-

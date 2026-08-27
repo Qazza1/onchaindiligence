@@ -35,7 +35,18 @@ import {
 import { createRateLimiter, callerKeyFromHeaders } from './rateLimit.js'
 import { chainalysisHealthy, companiesHouseHealthy, edgarHealthy } from './health.js'
 import { logPaymentSuccess, logPaymentFailed } from './paymentLog.js'
-import { attest, attestationEnabled, getPublicKeyPem, getKeyId } from './attestation.js'
+import {
+  attest,
+  attestationEnabled,
+  getPublicKeyPem,
+  getKeyId,
+  getAttestationKeyRecords,
+  getAttestationKeyRecord,
+  ATTESTATION_ISSUER,
+  ATTESTATION_SCHEMA_VERSION,
+  ATTESTATION_PURPOSE,
+  ATTESTATION_FIXTURE_PURPOSE,
+} from './attestation.js'
 import { isTotalFailure } from './diligence.js'
 import { buildOpenApiSpec } from './openapi.js'
 import { screenName, buildOfacAttribution, OfacUpstreamError } from './ofac.js'
@@ -89,6 +100,14 @@ app.use(
 )
 app.use(
   '/.well-known/attestation-key',
+  cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
+)
+app.use(
+  '/.well-known/attestation-keys',
+  cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
+)
+app.use(
+  '/.well-known/attestation-keys/*',
   cors({ origin: '*', allowMethods: ['GET', 'OPTIONS'], maxAge: 86400 })
 )
 // Sandbox is free, read-only test data — safe to read from any origin so
@@ -509,6 +528,21 @@ app.get('/sandbox/screen/:address', rateLimit, (c) => {
   }
 
   return c.json(sandboxScreen(input))
+})
+
+app.get('/sandbox/attestation-sample', rateLimit, (c) => {
+  return c.json(
+    attest(
+      {
+        sandbox: true,
+        fixture_id: 'verifier-sample-v1',
+        not_a_screening_result: true,
+        description:
+          'Fixed cryptographic verification fixture. No real counterparty was screened and no upstream was queried.',
+      },
+      { purpose: ATTESTATION_FIXTURE_PURPOSE }
+    )
+  )
 })
 
 
@@ -1077,9 +1111,39 @@ app.get('/.well-known/attestation-key', (c) => {
     key_id: getKeyId(),
     algorithm: 'ed25519',
     public_key_pem: getPublicKeyPem(),
+    status: 'active',
+    registry_url: '/.well-known/attestation-keys',
     verify_hint:
-      'Signatures are over JSON.stringify({ data, issued_at, key_id }) from the response body, ' +
-      'verified with this Ed25519 public key.',
+      'Resolve the attestation key_id through the registry. Version 2 uses RFC 8785 canonical JSON ' +
+      'with explicit issuer and purpose; legacy version 1 uses JSON.stringify.',
+  })
+})
+
+app.get('/.well-known/attestation-keys', (c) => {
+  const keys = getAttestationKeyRecords()
+  c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600')
+  return c.json({
+    registry_version: 1,
+    issuer: ATTESTATION_ISSUER,
+    active_key_id: getKeyId(),
+    supported_attestation_versions: [ATTESTATION_SCHEMA_VERSION, 'legacy-v1'],
+    keys,
+  })
+})
+
+app.get('/.well-known/attestation-keys/:keyId', (c) => {
+  const requestedKeyId = c.req.param('keyId')
+  if (!/^ed25519-[A-Za-z0-9_-]{16}$/.test(requestedKeyId)) {
+    return c.json({ error: 'invalid attestation key id' }, 400)
+  }
+  const record = getAttestationKeyRecord(requestedKeyId)
+  if (!record) return c.json({ error: 'attestation key not found' }, 404)
+  c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600')
+  return c.json({
+    registry_version: 1,
+    issuer: ATTESTATION_ISSUER,
+    attestation_purpose: ATTESTATION_PURPOSE,
+    key: record,
   })
 })
 
@@ -1142,6 +1206,8 @@ app.get('/', (c) =>
     attestation: {
       enabled: attestationEnabled(),
       public_key_url: '/.well-known/attestation-key',
+      key_registry_url: '/.well-known/attestation-keys',
+      schema_version: ATTESTATION_SCHEMA_VERSION,
     },
     note: 'See /openapi.json for machine-readable discovery, or README.md for full docs.',
   })

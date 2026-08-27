@@ -16,27 +16,34 @@
  * Crypto choice: Ed25519 via Node's built-in `crypto`. Fast, tiny (64-byte)
  * signatures, no extra dependency, widely supported for verification.
  *
- * What we sign: the EXACT bytes of the canonical JSON we return, plus an
- * issued-at timestamp and a key id. The signature covers the response body
- * verbatim, so any tampering invalidates it.
+ * What we sign: RFC 8785 canonical JSON containing the normalized response
+ * data, issued-at timestamp, key id, issuer, purpose and schema version.
  *
  * KEY MANAGEMENT (important):
  *   - The private key lives ONLY in the ATTESTATION_PRIVATE_KEY env var
  *     (PEM, PKCS8). Generate it once, store it in your hosting platform's
  *     secrets manager, never commit it.
- *   - The matching public key is served at /.well-known/attestation-key so
- *     verifiers can fetch it. Publishing the public key is safe and is the
+ *   - Public keys and status are served by key id at
+ *     /.well-known/attestation-keys. Publishing public keys is safe and is the
  *     whole point.
- *   - If the env var is absent, attestation is DISABLED gracefully:
- *     responses are returned unsigned with a clear flag, rather than the
- *     server refusing to boot. This keeps the service usable while you set
- *     the key up, but you should set it for production.
+ *   - The production server refuses to boot without a signing key. The
+ *     unsigned branch remains only for isolated tests and library reuse.
  *
  * Generate a keypair (run locally, once):
  *   node -e "const c=require('crypto');const {publicKey,privateKey}=c.generateKeyPairSync('ed25519');console.log('PRIVATE (set as ATTESTATION_PRIVATE_KEY, keep secret):\\n'+privateKey.export({type:'pkcs8',format:'pem'}));console.log('PUBLIC (informational):\\n'+publicKey.export({type:'spki',format:'pem'}))"
  */
 
 import { createPrivateKey, createPublicKey, createHash, sign as cryptoSign, type KeyObject } from 'node:crypto'
+import { canonicalizeJson, normalizeJson } from './canonicalJson.js'
+import {
+  HISTORICAL_ATTESTATION_KEYS,
+  type AttestationKeyRecord,
+} from './attestationKeyHistory.js'
+
+export const ATTESTATION_SCHEMA_VERSION = 'onchaindiligence.attestation.v2'
+export const ATTESTATION_ISSUER = 'https://api.onchaindiligence.com'
+export const ATTESTATION_PURPOSE = 'compliance-screening-result'
+export const ATTESTATION_FIXTURE_PURPOSE = 'verification-fixture'
 
 let privateKey: KeyObject | null = null
 let publicKeyPem: string | null = null
@@ -97,6 +104,48 @@ export function getKeyId(): string | null {
   return keyId
 }
 
+export function getAttestationKeyRecords(): AttestationKeyRecord[] {
+  const historical = HISTORICAL_ATTESTATION_KEYS.map((record) => ({ ...record }))
+  if (!keyId || !publicKeyPem) return historical
+
+  if (historical.some((record) => record.key_id === keyId)) {
+    throw new Error(`active attestation key ${keyId} is duplicated in immutable history`)
+  }
+
+  return [
+    {
+      key_id: keyId,
+      algorithm: 'ed25519',
+      public_key_pem: publicKeyPem,
+      status: 'active',
+      valid_from: process.env.ATTESTATION_KEY_ACTIVATED_AT || null,
+      valid_until: null,
+      status_changed_at: process.env.ATTESTATION_KEY_ACTIVATED_AT || null,
+    },
+    ...historical,
+  ]
+}
+
+export function getAttestationKeyRecord(requestedKeyId: string): AttestationKeyRecord | null {
+  return getAttestationKeyRecords().find((record) => record.key_id === requestedKeyId) ?? null
+}
+
+export function buildAttestationSigningInput(
+  data: unknown,
+  issuedAt: string,
+  signingKeyId: string,
+  purpose = ATTESTATION_PURPOSE
+): string {
+  return canonicalizeJson({
+    schema_version: ATTESTATION_SCHEMA_VERSION,
+    issuer: ATTESTATION_ISSUER,
+    purpose,
+    data,
+    issued_at: issuedAt,
+    key_id: signingKeyId,
+  })
+}
+
 /**
  * Wraps a result object into a signed attestation envelope.
  *
@@ -116,12 +165,17 @@ export function getKeyId(): string | null {
  * explicit `attestation: { signed: false, ... }` so callers are never
  * misled into thinking an unsigned response was signed.
  */
-export function attest<T extends Record<string, unknown>>(data: T): Record<string, unknown> {
+export function attest<T extends Record<string, unknown>>(
+  data: T,
+  options: { purpose?: typeof ATTESTATION_PURPOSE | typeof ATTESTATION_FIXTURE_PURPOSE } = {}
+): Record<string, unknown> {
   const issuedAt = new Date().toISOString()
+  const normalizedData = normalizeJson(data)
+  const purpose = options.purpose ?? ATTESTATION_PURPOSE
 
   if (!privateKey || !keyId) {
     return {
-      data,
+      data: normalizedData,
       attestation: {
         signed: false,
         issued_at: issuedAt,
@@ -132,26 +186,26 @@ export function attest<T extends Record<string, unknown>>(data: T): Record<strin
     }
   }
 
-  // Canonical signing input: a deterministic JSON string of the data plus
-  // the issued_at and key_id. Verifiers reconstruct this exact string and
-  // check the signature against the published public key.
-  const signingObject = { data, issued_at: issuedAt, key_id: keyId }
-  const signingInput = JSON.stringify(signingObject)
+  const signingInput = buildAttestationSigningInput(normalizedData, issuedAt, keyId, purpose)
 
   // Ed25519 in Node: pass null as the algorithm; sign the raw bytes.
   const signature = cryptoSign(null, Buffer.from(signingInput, 'utf8'), privateKey)
 
   return {
-    data,
+    data: normalizedData,
     attestation: {
       signed: true,
+      schema_version: ATTESTATION_SCHEMA_VERSION,
+      issuer: ATTESTATION_ISSUER,
+      purpose,
       issued_at: issuedAt,
       key_id: keyId,
       algorithm: 'ed25519',
+      canonicalization: 'RFC8785',
       signature: signature.toString('base64url'),
       signing_input_hint:
-        'signature is over JSON.stringify({ data, issued_at, key_id }) using these exact field values; ' +
-        'verify with the Ed25519 public key at /.well-known/attestation-key',
+        'RFC 8785 canonical JSON over { schema_version, issuer, purpose, data, issued_at, key_id }; ' +
+        'resolve key_id through /.well-known/attestation-keys/{key_id}',
     },
   }
 }
