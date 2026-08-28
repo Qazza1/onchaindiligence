@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "mcp": "tsx src/mcp.ts",
+    "p1.8:capture": "tsx tools/p1_8/capture-providers.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx test/smoke.ts && node --test test/agent-evidence-schema.test.mjs"
   },

@@ -9,11 +9,13 @@ intentionally **not strict-offline-ready** until the owner supplies the current
 key's first defensible activation boundary; the public registry exposes this as
 readiness metadata instead of allowing verifiers to infer a date.
 
-P1 items 6 and 7 are **complete**. The v0 representation boundary now has
+P1 items 6, 7, and 8 are **complete**. The v0 representation boundary now has
 strict Draft 2020-12 JSON Schemas, public schema URLs, deterministic
 all-record-kind DSSE fixtures, language-neutral negative/tri-state cases, and a
-typed Python producer/verifier package. P1 item 8 (a real two-provider
-production bundle slice) is the next implementation slice.
+typed Python producer/verifier package. A public-safe production bundle now
+binds two real provider observations into the complete evidence-to-decision
+graph. P1 item 9 (reusable first-class policy and decision production
+adapters/APIs) is the next implementation slice.
 
 ### P0 completion record (2026-08-28)
 
@@ -83,6 +85,26 @@ production bundle slice) is the next implementation slice.
   security lint, dependency consistency/audit, wheel/sdist build and isolated
   wheel import, plus the unchanged API's 63 tests, four schema/corpus tests,
   and TypeScript typecheck. CI repeats Python tests on 3.10, 3.11, and 3.12.
+
+### P1.8 completion record (2026-08-28)
+
+- A repeatable workflow now captures the existing Chainalysis onchain
+  sanctions oracle and SEC EDGAR production clients and signs their complete
+  responses through the unchanged v2 attestation implementation.
+- The committed public-safe artifact preserves each signed response object
+  exactly and binds both parallel Evidence records into a complete Principal,
+  Agent, Mandate, Run, Policy, Decision, and Execution DAG.
+- Policy refuses execution without evidence binding the independently queried
+  wallet to the SEC filer. Decision records the exact evidence and policy
+  references; Execution records `withheld-not-submitted` and claims no external
+  transaction.
+- The P1.7 Python API creates every content ID, validates the graph, seals the
+  DSSE bundle, and verifies it fully offline under an explicit caller-supplied
+  trust policy. Tests prove genuine `VALID`, tamper `INVALID`, missing-trust
+  `UNVERIFIABLE`, historical retirement, and zero socket access.
+- Dedicated source-witness and bundle keys were generated for this reference
+  capture and their private material was never persisted. This does not alter
+  or work around the unresolved production API key activation boundary.
 
 ## 1. Verified current architecture
 
@@ -290,9 +312,12 @@ evidence.
    fixtures.
 7. **Complete.** Implement the Python package first: deterministic records,
    DSSE sealing, DAG validation, trust policy, and offline verification.
-8. Implement a real bundle slice using at least two existing production
+8. **Complete.** Implement a real bundle slice using at least two existing production
    compliance results; preserve each original envelope verbatim.
-9. Add first-class policy and decision records with exact evidence references.
+9. Add reusable first-class policy and decision production adapters/APIs with
+   exact evidence references. P1.8 exercises the record kinds in the reference
+   workflow; this item productizes their construction without changing paid
+   routes.
 10. Attach and verify one real onchain/financial execution receipt without
     claiming unsupported causality.
 

@@ -463,3 +463,17 @@ multi-run bundles, universal principal identity, policy execution proofs,
 custody, a publisher reputation system, mandatory transparency, or causal
 proof between a model decision and a transaction. These require later,
 versioned profiles.
+
+## Appendix A. Production reference artifact (non-normative)
+
+The repository's [`examples/production/p1_8`](../examples/production/p1_8/README.md)
+artifact applies this contract to two real observations captured through the
+existing Chainalysis sanctions-oracle and SEC EDGAR provider clients. It embeds
+the complete signed v2 envelopes without transforming signed fields, constructs
+the full evidence DAG through the Python reference API, and verifies offline
+with explicit caller-supplied trust.
+
+The artifact is an interoperability and production-workflow reference, not an
+additional format or normative fixture. Its dedicated reference keys are not
+the live production API key, its timestamps are signer assertions, and its
+withheld Execution record deliberately makes no transaction or causality claim.

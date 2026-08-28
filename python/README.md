@@ -26,6 +26,15 @@ python -m pip install ./python
 
 Python 3.10 or newer is required.
 
+## Production reference bundle
+
+[`examples/production/p1_8`](../examples/production/p1_8/README.md) contains a
+public-safe bundle built from real Chainalysis oracle and SEC EDGAR observations
+through the production provider and v2 signing code paths. It exercises the
+complete Mandate/Evidence/Policy/Decision/Execution graph and verifies offline
+under caller-supplied trust. The artifact documentation states its signing,
+publication, timestamp, and withheld-execution boundaries explicitly.
+
 ## Offline verification
 
 ```python
