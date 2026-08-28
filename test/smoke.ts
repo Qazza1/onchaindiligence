@@ -14,6 +14,7 @@
  */
 
 import assert from 'node:assert'
+import { readFileSync } from 'node:fs'
 
 // --- Mock global fetch before importing anything that uses it ---------
 const originalFetch = global.fetch
@@ -40,6 +41,7 @@ process.env.MPP_RECIPIENT_ADDRESS = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb9226d'
 process.env.TEMPO_CURRENCY_ADDRESS = '0x20c0000000000000000000000000000000000000'
 process.env.MPP_SECRET_KEY = 'test-mpp-secret-that-is-at-least-32-characters'
 process.env.ATTESTATION_SERVICE_TOKEN = 'test-attestation-token-at-least-32-characters'
+process.env.ATTESTATION_KEY_ACTIVATED_AT = '2026-01-01T00:00:00.000Z'
 process.env.TEMPO_TESTNET = 'true'
 process.env.ANCHOR_RPC_URL = 'http://127.0.0.1:18546'
 process.env.ANCHOR_CHAIN_ID = '42431'
@@ -75,6 +77,27 @@ await test('internal attestation auth fails closed and accepts only the configur
   assert.strictEqual(authorizeInternalBearer(undefined, token), 'unauthorized')
   assert.strictEqual(authorizeInternalBearer('Bearer wrong-token', token), 'unauthorized')
   assert.strictEqual(authorizeInternalBearer(`Bearer ${token}`, token), 'authorized')
+})
+
+await test('OpenAPI models signed envelopes and full-envelope anchoring accurately', async () => {
+  const { buildOpenApiSpec } = await import('../src/openapi.js')
+  const spec: any = buildOpenApiSpec()
+  for (const name of [
+    'SignedSanctionsResult',
+    'SignedNameScreenResult',
+    'SignedCompanyResult',
+    'SignedUsCompanyResult',
+    'SignedDiligenceResult',
+    'SignedAnchorResult',
+  ]) {
+    assert.deepStrictEqual(spec.components.schemas[name].required, ['data', 'attestation'])
+    assert.ok(spec.components.schemas[name].properties.data)
+  }
+  assert.strictEqual(
+    spec.paths['/anchor'].post.requestBody.content['application/json'].schema.$ref,
+    '#/components/schemas/AnchorableAttestationEnvelope'
+  )
+  assert.match(spec.components.schemas.Attestation.description, /signer assertion/)
 })
 
 await test('invalid address is rejected as a 400-class error (no network call)', async () => {
@@ -470,11 +493,99 @@ console.log('\nAttestation:')
 const crypto = await import('node:crypto')
 const att = await import('../src/attestation.js')
 const { canonicalizeJson } = await import('../src/canonicalJson.js')
+const { validateAttestationKeyRegistry } = await import('../src/attestationKeyHistory.js')
+
+function makeKeyRecord(status: 'active' | 'retired' | 'revoked' | 'compromised' = 'active') {
+  const { publicKey } = crypto.generateKeyPairSync('ed25519')
+  const public_key_pem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+  const digest = crypto.createHash('sha256')
+    .update(publicKey.export({ type: 'spki', format: 'der' }))
+    .digest('base64url')
+  return {
+    key_id: `ed25519-${digest.slice(0, 16)}`,
+    algorithm: 'ed25519' as const,
+    public_key_pem,
+    status,
+    valid_from: '2026-01-01T00:00:00.000Z',
+    valid_until: status === 'retired' ? '2026-02-01T00:00:00.000Z' : null,
+    status_changed_at: status === 'active' ? '2026-01-01T00:00:00.000Z' : '2026-02-01T00:00:00.000Z',
+    status_reason: status === 'revoked' ? 'operator-requested revocation' : undefined,
+    compromised_at: status === 'compromised' ? '2026-01-15T00:00:00.000Z' : null,
+    replacement_key_id: null as string | null,
+  }
+}
 
 await test('canonical JSON sorts object keys recursively and preserves array order', async () => {
   assert.strictEqual(
     canonicalizeJson({ z: 2, a: { y: true, x: ['b', 'a'] }, n: -0 }),
     '{"a":{"x":["b","a"],"y":true},"n":0,"z":2}'
+  )
+})
+
+await test('shared RFC8785 language-neutral vectors match API canonicalization', async () => {
+  const corpus = JSON.parse(
+    readFileSync(new URL('../conformance/rfc8785-vectors.json', import.meta.url), 'utf8')
+  ) as {
+    canonicalization: Array<{ id: string; input: unknown; expected: string }>
+    invalid_json: Array<{ id: string; input: string; error_code: string }>
+  }
+  for (const vector of corpus.canonicalization) {
+    assert.strictEqual(canonicalizeJson(vector.input), vector.expected, vector.id)
+  }
+})
+
+await test('key registry validates SPKI identity, lifecycle and strict readiness', async () => {
+  const active = makeKeyRecord()
+  assert.deepStrictEqual(validateAttestationKeyRegistry([active], { requireValidFrom: true }), {
+    strict_ready: true,
+    warnings: [],
+  })
+
+  const missingBoundary = { ...active, valid_from: null }
+  const migration = validateAttestationKeyRegistry([missingBoundary])
+  assert.strictEqual(migration.strict_ready, false)
+  assert.match(migration.warnings[0], /no valid_from/)
+  assert.throws(
+    () => validateAttestationKeyRegistry([missingBoundary], { requireValidFrom: true }),
+    /no valid_from/
+  )
+
+  assert.throws(() => validateAttestationKeyRegistry([active, active]), /duplicate/)
+  assert.throws(
+    () => validateAttestationKeyRegistry([{ ...active, key_id: 'ed25519-AAAAAAAAAAAAAAAA' }]),
+    /does not match its public key/
+  )
+  assert.throws(
+    () => validateAttestationKeyRegistry([{ ...active, valid_from: '2026-01-01' }]),
+    /invalid valid_from/
+  )
+})
+
+await test('key registry rejects incoherent transition records and replacement links', async () => {
+  const active = makeKeyRecord()
+  const retired = makeKeyRecord('retired')
+  retired.replacement_key_id = active.key_id
+  assert.strictEqual(validateAttestationKeyRegistry([active, retired]).strict_ready, true)
+
+  assert.throws(
+    () => validateAttestationKeyRegistry([{ ...retired, valid_until: null }]),
+    /requires valid_until/
+  )
+  assert.throws(
+    () => validateAttestationKeyRegistry([{ ...retired, replacement_key_id: 'ed25519-AAAAAAAAAAAAAAAA' }]),
+    /unknown replacement/
+  )
+  assert.throws(
+    () => validateAttestationKeyRegistry([{ ...makeKeyRecord('compromised'), compromised_at: null }]),
+    /requires compromised_at/
+  )
+  assert.throws(
+    () => validateAttestationKeyRegistry([{ ...makeKeyRecord('revoked'), status_reason: undefined }]),
+    /requires status_changed_at and status_reason/
+  )
+  assert.throws(
+    () => validateAttestationKeyRegistry([{ ...retired, valid_until: '2025-12-31T00:00:00.000Z' }]),
+    /before valid_from/
   )
 })
 
@@ -575,8 +686,17 @@ await test('anchor verification rejects disallowed key states and non-compliance
   const retired = att.verifyAttestationForAnchoring(envelope, () => ({
     ...currentKey,
     status: 'retired',
+    valid_until: new Date(Date.parse(envelope.attestation.issued_at) + 60_000).toISOString(),
+    status_changed_at: new Date(Date.parse(envelope.attestation.issued_at) + 60_000).toISOString(),
   }))
   assert.strictEqual(retired.valid, true)
+
+  const missingBoundary = att.verifyAttestationForAnchoring(envelope, () => ({
+    ...currentKey,
+    valid_from: null,
+  }))
+  assert.strictEqual(missingBoundary.valid, false)
+  if (!missingBoundary.valid) assert.match(missingBoundary.error, /valid_from/)
 
   for (const status of ['revoked', 'compromised'] as const) {
     const result = att.verifyAttestationForAnchoring(envelope, () => ({ ...currentKey, status }))

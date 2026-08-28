@@ -1,0 +1,31 @@
+{
+  "corpus_version": 1,
+  "source": "RFC 8785 sections 3.2.2 and 3.2.3, plus OnChainDiligence parser policy",
+  "canonicalization": [
+    {
+      "id": "recursive-order-arrays-empty-negative-zero",
+      "input": { "z": [], "n": -0, "a": { "y": true, "x": ["b", "a"], "empty": {} } },
+      "expected": "{\"a\":{\"empty\":{},\"x\":[\"b\",\"a\"],\"y\":true},\"n\":0,\"z\":[]}"
+    },
+    {
+      "id": "rfc8785-unicode-property-order",
+      "input": { "€": "Euro Sign", "\r": "Carriage Return", "דּ": "Hebrew Letter Dalet With Dagesh", "1": "One", "😀": "Emoji: Grinning Face", "": "Control", "ö": "Latin Small Letter O With Diaeresis" },
+      "expected": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: Grinning Face\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}"
+    },
+    {
+      "id": "rfc8785-numbers-and-escapes",
+      "input": { "numbers": [333333333.3333333, 1e30, 4.5, 0.002, 1e-27], "text": "line\n\"\\" },
+      "expected": "{\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"text\":\"line\\n\\\"\\\\\"}"
+    },
+    {
+      "id": "boundary-safe-integers",
+      "input": [-9007199254740991, 9007199254740991],
+      "expected": "[-9007199254740991,9007199254740991]"
+    }
+  ],
+  "invalid_json": [
+    { "id": "duplicate-key", "input": "{\"data\":1,\"data\":2}", "error_code": "duplicate_key" },
+    { "id": "unsafe-positive-integer", "input": "{\"n\":9007199254740992}", "error_code": "unsafe_integer" },
+    { "id": "unsafe-negative-integer", "input": "{\"n\":-9007199254740992}", "error_code": "unsafe_integer" }
+  ]
+}

@@ -7,11 +7,11 @@
  * In compliance, an unverifiable check is close to worthless — the entire
  * purpose is producing defensible evidence for an auditor later. A plain
  * JSON response could be fabricated after the fact. By signing every
- * response with a dedicated key plus a strict timestamp, the caller gets
- * proof they can store and later show an auditor: "nanoscreen attested
- * that this wallet was clean at this exact moment, and here is the
- * signature." Anyone can verify it against our published public key
- * without contacting us.
+ * response with a dedicated key plus a signed timestamp assertion, the caller
+ * gets a tamper-evident statement they can store and later show an auditor:
+ * "OnChainDiligence signed this exact result and asserted this issuance time."
+ * Anyone with independently trusted key records can verify it offline. Only a
+ * separately verified anchor can establish an external no-later-than bound.
  *
  * Crypto choice: Ed25519 via Node's built-in `crypto`. Fast, tiny (64-byte)
  * signatures, no extra dependency, widely supported for verification.
@@ -45,6 +45,7 @@ import { canonicalizeJson, normalizeJson } from './canonicalJson.js'
 import {
   HISTORICAL_ATTESTATION_KEYS,
   type AttestationKeyRecord,
+  validateAttestationKeyRegistry,
 } from './attestationKeyHistory.js'
 
 export const ATTESTATION_SCHEMA_VERSION = 'onchaindiligence.attestation.v2'
@@ -113,13 +114,16 @@ export function getKeyId(): string | null {
 
 export function getAttestationKeyRecords(): AttestationKeyRecord[] {
   const historical = HISTORICAL_ATTESTATION_KEYS.map((record) => ({ ...record }))
-  if (!keyId || !publicKeyPem) return historical
+  if (!keyId || !publicKeyPem) {
+    validateAttestationKeyRegistry(historical, { requireValidFrom: false })
+    return historical
+  }
 
   if (historical.some((record) => record.key_id === keyId)) {
     throw new Error(`active attestation key ${keyId} is duplicated in immutable history`)
   }
 
-  return [
+  const records: AttestationKeyRecord[] = [
     {
       key_id: keyId,
       algorithm: 'ed25519',
@@ -128,9 +132,20 @@ export function getAttestationKeyRecords(): AttestationKeyRecord[] {
       valid_from: process.env.ATTESTATION_KEY_ACTIVATED_AT || null,
       valid_until: null,
       status_changed_at: process.env.ATTESTATION_KEY_ACTIVATED_AT || null,
+      replacement_key_id: null,
+      compromised_at: null,
     },
     ...historical,
   ]
+  validateAttestationKeyRegistry(records, { requireValidFrom: false })
+  return records
+}
+
+export function getAttestationKeyRegistryReadiness(): {
+  strict_ready: boolean
+  warnings: string[]
+} {
+  return validateAttestationKeyRegistry(getAttestationKeyRecords(), { requireValidFrom: false })
 }
 
 export function getAttestationKeyRecord(requestedKeyId: string): AttestationKeyRecord | null {
@@ -241,11 +256,27 @@ export function verifyAttestationForAnchoring(
   }
 
   const issuedAtMs = Date.parse(issuedAt)
-  const validFromMs = key.valid_from ? Date.parse(key.valid_from) : Number.NEGATIVE_INFINITY
+  if (!key.valid_from) {
+    return {
+      valid: false,
+      status: 422,
+      error: 'attestation key has no registered valid_from boundary',
+    }
+  }
+  if (key.status === 'retired' && !key.valid_until) {
+    return {
+      valid: false,
+      status: 422,
+      error: 'retired attestation key has no registered valid_until boundary',
+    }
+  }
+  const validFromMs = Date.parse(key.valid_from)
   const validUntilMs = key.valid_until ? Date.parse(key.valid_until) : Number.POSITIVE_INFINITY
   if (
-    (!Number.isFinite(validFromMs) && validFromMs !== Number.NEGATIVE_INFINITY) ||
+    !Number.isFinite(validFromMs) ||
+    new Date(validFromMs).toISOString() !== key.valid_from ||
     (!Number.isFinite(validUntilMs) && validUntilMs !== Number.POSITIVE_INFINITY) ||
+    (key.valid_until && new Date(validUntilMs).toISOString() !== key.valid_until) ||
     issuedAtMs < validFromMs ||
     issuedAtMs > validUntilMs
   ) {

@@ -42,8 +42,10 @@ export function buildOpenApiSpec() {
         'Pay-per-call compliance checks — crypto sanctions screening and UK ' +
         'company verification — billed per request via the Machine Payments ' +
         'Protocol (MPP) on Tempo. No account or API key. Every paid response ' +
-        'is an Ed25519-signed attestation that can be verified independently ' +
-        'against the public key at /.well-known/attestation-key.\n\n' +
+        'is an Ed25519-signed v2 attestation that can be verified independently ' +
+        'against caller-trusted records from /.well-known/attestation-keys. The ' +
+        'signature authenticates the signer\'s timestamp assertion; an external ' +
+        'time bound requires a separately verified anchor.\n\n' +
         'Not legal or compliance advice, and not a substitute for a full ' +
         'compliance program. The sanctions oracle returns a match flag only.',
       contact: { name: 'OnchainDiligence', url: 'https://onchaindiligence.com' },
@@ -433,6 +435,23 @@ export function buildOpenApiSpec() {
           },
         },
       },
+      '/.well-known/attestation-keys': {
+        get: {
+          tags: ['Service'],
+          summary: 'Versioned attestation key registry',
+          description:
+            'Free. Publishes exact active and historical key records, lifecycle ' +
+            'metadata, validity intervals, and strict offline-verification readiness. ' +
+            'Downloading this document is key discovery, not an out-of-band trust decision.',
+          operationId: 'attestationKeyRegistry',
+          responses: {
+            '200': {
+              description: 'Versioned public key registry.',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/AttestationKeyRegistry' } } },
+            },
+          },
+        },
+      },
       '/': {
         get: {
           tags: ['Service'],
@@ -466,28 +485,42 @@ export function buildOpenApiSpec() {
         },
         SignedAnchorResult: {
           type: 'object',
+          required: ['data', 'attestation'],
           properties: {
-            anchor_hash: { type: 'string' },
-            tx_hash: { type: 'string', nullable: true },
-            already_anchored: { type: 'boolean' },
-            chain: { type: 'string', example: 'Tempo' },
-            contract: { type: 'string' },
-            attestation_key_id: { type: 'string' },
-            attestation_key_status: { type: 'string', enum: ['active', 'retired'] },
-            attestation_issued_at: { type: 'string', format: 'date-time' },
-            note: { type: 'string' },
+            data: {
+              type: 'object',
+              properties: {
+                anchor_hash: { type: 'string' },
+                tx_hash: { type: 'string', nullable: true },
+                already_anchored: { type: 'boolean' },
+                chain: { type: 'string', example: 'Tempo' },
+                contract: { type: 'string' },
+                attestation_key_id: { type: 'string' },
+                attestation_key_status: { type: 'string', enum: ['active', 'retired'] },
+                attestation_issued_at: { type: 'string', format: 'date-time' },
+                note: { type: 'string' },
+              },
+            },
             attestation: { $ref: '#/components/schemas/Attestation' },
           },
         },
         Attestation: {
           type: 'object',
-          description: 'Ed25519 signature over { data, issued_at, key_id }.',
+          required: ['signed', 'schema_version', 'issuer', 'purpose', 'issued_at', 'key_id', 'algorithm', 'canonicalization', 'signature'],
+          description:
+            'Version 2 Ed25519 metadata. The signature covers RFC 8785 canonical ' +
+            'JSON over {schema_version, issuer, purpose, data, issued_at, key_id}. ' +
+            'issued_at is an authenticated signer assertion, not independent time proof.',
           properties: {
-            signed: { type: 'boolean' },
+            signed: { const: true },
+            schema_version: { const: 'onchaindiligence.attestation.v2' },
+            issuer: { const: 'https://api.onchaindiligence.com' },
+            purpose: { type: 'string', enum: ['compliance-screening-result', 'verification-fixture'] },
             key_id: { type: 'string', example: 'ed25519-D8wfc7civVNG05Ds' },
-            algorithm: { type: 'string', example: 'ed25519' },
-            signature: { type: 'string', description: 'base64url signature.' },
-            issued_at: { type: 'string', format: 'date-time' },
+            algorithm: { const: 'ed25519' },
+            canonicalization: { const: 'RFC8785' },
+            signature: { type: 'string', pattern: '^[A-Za-z0-9_-]{86}$', description: '64-byte Ed25519 signature as unpadded base64url.' },
+            issued_at: { type: 'string', format: 'date-time', description: 'Timestamp asserted by the signer and authenticated by the signature.' },
           },
         },
         AnchorableAttestationEnvelope: {
@@ -541,19 +574,25 @@ export function buildOpenApiSpec() {
         },
         SignedNameScreenResult: {
           type: 'object',
+          required: ['data', 'attestation'],
           properties: {
-            query: { type: 'string' },
-            normalized_query: { type: 'string' },
-            hit: { type: 'boolean' },
-            matches: { type: 'array', items: { $ref: '#/components/schemas/SdnMatch' } },
-            retrieved_at: {
-              type: 'string',
-              format: 'date-time',
-              description: 'When this service fetched the OFAC files; not the source publication date.',
+            data: {
+              type: 'object',
+              properties: {
+                query: { type: 'string' },
+                normalized_query: { type: 'string' },
+                hit: { type: 'boolean' },
+                matches: { type: 'array', items: { $ref: '#/components/schemas/SdnMatch' } },
+                retrieved_at: {
+                  type: 'string',
+                  format: 'date-time',
+                  description: 'When this service fetched the OFAC files; not the source publication date.',
+                },
+                threshold: { type: 'number' },
+                source: { type: 'string' },
+                note: { type: 'string' },
+              },
             },
-            threshold: { type: 'number' },
-            source: { type: 'string' },
-            note: { type: 'string' },
             attestation: { $ref: '#/components/schemas/Attestation' },
           },
         },
@@ -648,31 +687,28 @@ export function buildOpenApiSpec() {
           },
         },
         SignedVerdictResult: {
-          allOf: [
-            { $ref: '#/components/schemas/VerdictData' },
-            {
-              type: 'object',
-              properties: { attestation: { $ref: '#/components/schemas/Attestation' } },
-            },
-          ],
+          type: 'object',
+          required: ['data', 'attestation'],
+          properties: {
+            data: { $ref: '#/components/schemas/VerdictData' },
+            attestation: { $ref: '#/components/schemas/Attestation' },
+          },
         },
         SignedSanctionsResult: {
-          allOf: [
-            { $ref: '#/components/schemas/SanctionsData' },
-            {
-              type: 'object',
-              properties: { attestation: { $ref: '#/components/schemas/Attestation' } },
-            },
-          ],
+          type: 'object',
+          required: ['data', 'attestation'],
+          properties: {
+            data: { $ref: '#/components/schemas/SanctionsData' },
+            attestation: { $ref: '#/components/schemas/Attestation' },
+          },
         },
         SignedCompanyResult: {
-          allOf: [
-            { $ref: '#/components/schemas/CompanyData' },
-            {
-              type: 'object',
-              properties: { attestation: { $ref: '#/components/schemas/Attestation' } },
-            },
-          ],
+          type: 'object',
+          required: ['data', 'attestation'],
+          properties: {
+            data: { $ref: '#/components/schemas/CompanyData' },
+            attestation: { $ref: '#/components/schemas/Attestation' },
+          },
         },
         UsCompanyData: {
           type: 'object',
@@ -718,26 +754,31 @@ export function buildOpenApiSpec() {
           },
         },
         SignedUsCompanyResult: {
-          allOf: [
-            { $ref: '#/components/schemas/UsCompanyData' },
-            {
-              type: 'object',
-              properties: { attestation: { $ref: '#/components/schemas/Attestation' } },
-            },
-          ],
+          type: 'object',
+          required: ['data', 'attestation'],
+          properties: {
+            data: { $ref: '#/components/schemas/UsCompanyData' },
+            attestation: { $ref: '#/components/schemas/Attestation' },
+          },
         },
         SignedDiligenceResult: {
           type: 'object',
+          required: ['data', 'attestation'],
           properties: {
-            wallet_check: { type: 'object' },
-            company_check: { type: 'object' },
-            link_disclaimer: {
-              type: 'string',
-              description:
-                'Always present. States that no link between wallet and ' +
-                'company is established by this data.',
+            data: {
+              type: 'object',
+              properties: {
+                wallet_check: { type: 'object' },
+                company_check: { type: 'object' },
+                link_disclaimer: {
+                  type: 'string',
+                  description:
+                    'Always present. States that no link between wallet and ' +
+                    'company is established by this data.',
+                },
+                checked_at: { type: 'string', format: 'date-time' },
+              },
             },
-            checked_at: { type: 'string', format: 'date-time' },
             attestation: { $ref: '#/components/schemas/Attestation' },
           },
         },
@@ -765,6 +806,35 @@ export function buildOpenApiSpec() {
             algorithm: { type: 'string', example: 'ed25519' },
             public_key_pem: { type: 'string' },
             verify_hint: { type: 'string' },
+          },
+        },
+        AttestationKeyRecord: {
+          type: 'object',
+          required: ['key_id', 'algorithm', 'public_key_pem', 'status', 'valid_from', 'valid_until', 'status_changed_at'],
+          properties: {
+            key_id: { type: 'string', pattern: '^ed25519-[A-Za-z0-9_-]{16}$' },
+            algorithm: { const: 'ed25519' },
+            public_key_pem: { type: 'string' },
+            status: { type: 'string', enum: ['active', 'retired', 'revoked', 'compromised'] },
+            valid_from: { type: ['string', 'null'], format: 'date-time' },
+            valid_until: { type: ['string', 'null'], format: 'date-time' },
+            status_changed_at: { type: ['string', 'null'], format: 'date-time' },
+            status_reason: { type: 'string' },
+            replacement_key_id: { type: ['string', 'null'] },
+            compromised_at: { type: ['string', 'null'], format: 'date-time' },
+          },
+        },
+        AttestationKeyRegistry: {
+          type: 'object',
+          required: ['registry_version', 'issuer', 'active_key_id', 'strict_offline_verification_ready', 'trust_warnings', 'keys'],
+          properties: {
+            registry_version: { const: 1 },
+            issuer: { const: 'https://api.onchaindiligence.com' },
+            active_key_id: { type: ['string', 'null'] },
+            supported_attestation_versions: { type: 'array', items: { type: 'string' } },
+            strict_offline_verification_ready: { type: 'boolean' },
+            trust_warnings: { type: 'array', items: { type: 'string' } },
+            keys: { type: 'array', items: { $ref: '#/components/schemas/AttestationKeyRecord' } },
           },
         },
         Error: {

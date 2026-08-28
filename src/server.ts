@@ -42,6 +42,7 @@ import {
   getKeyId,
   getAttestationKeyRecords,
   getAttestationKeyRecord,
+  getAttestationKeyRegistryReadiness,
   ATTESTATION_ISSUER,
   ATTESTATION_SCHEMA_VERSION,
   ATTESTATION_PURPOSE,
@@ -68,6 +69,10 @@ import { authorizeInternalBearer } from './internalAuth.js'
 import { evaluateVerdict } from './verdict.js'
 
 assertConfigured()
+
+// Fail startup for contradictory or structurally unsafe registry history. A
+// missing activation boundary remains an explicit migration readiness warning.
+getAttestationKeyRecords()
 
 const app = new Hono<{
   Variables: { verifiedAnchorAttestation: VerifiedAttestationForAnchoring }
@@ -1076,12 +1081,15 @@ app.get('/.well-known/attestation-key', (c) => {
 
 app.get('/.well-known/attestation-keys', (c) => {
   const keys = getAttestationKeyRecords()
+  const readiness = getAttestationKeyRegistryReadiness()
   c.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600')
   return c.json({
     registry_version: 1,
     issuer: ATTESTATION_ISSUER,
     active_key_id: getKeyId(),
     supported_attestation_versions: [ATTESTATION_SCHEMA_VERSION, 'legacy-v1'],
+    strict_offline_verification_ready: readiness.strict_ready,
+    trust_warnings: readiness.warnings,
     keys,
   })
 })

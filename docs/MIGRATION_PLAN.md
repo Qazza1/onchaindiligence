@@ -1,7 +1,41 @@
 # Agent Evidence migration plan
 
 Status: governing incremental migration plan
-Last updated: 2026-08-27
+Last updated: 2026-08-28
+
+P0 implementation status: **code-complete**. Items 1–5 have shipped as scoped
+repository changes and are covered by cross-surface tests. Production remains
+intentionally **not strict-offline-ready** until the owner supplies the current
+key's first defensible activation boundary; the public registry exposes this as
+readiness metadata instead of allowing verifiers to infer a date.
+
+### P0 completion record (2026-08-28)
+
+- The TypeScript SDK now exports a zero-network, isomorphic v1/v2 verifier with
+  caller-supplied trust material, exact `VALID | INVALID | UNVERIFIABLE` states,
+  component reports, SPKI-derived key-ID validation, strict lifecycle windows,
+  explicit legacy support, and no downgrade or fallback behavior.
+- Online registry discovery is a separate wrapper and requires an explicit
+  trust decision. The compatibility class method remains online and is clearly
+  documented as such.
+- CLI `verify <file> --trust <registry>` requires no account and performs no
+  network access. `--fetch-keys` is explicit; exit codes are 0/3/4 for
+  VALID/INVALID/UNVERIFIABLE, with 2 reserved for usage errors.
+- Registry records are validated at startup/test for derived IDs, duplicates,
+  algorithms, exact timestamps, intervals, lifecycle requirements, and
+  replacement links. Historical source records are frozen. The registry
+  publishes `strict_offline_verification_ready` and `trust_warnings`.
+- A normal-rotation and emergency-compromise runbook inventories the real live
+  production key without inventing its missing activation time.
+- A language-neutral corpus covers RFC8785 and seven v1/v2 trust outcomes. API,
+  SDK, Action, and browser canonicalizers execute the shared vectors; CLI tests
+  prove zero-network behavior and online-wrapper separation.
+- SDK, CLI, website examples, browser copy, and OpenAPI now use the complete
+  authentic envelope for anchoring. No MCP anchor consumer exists. Existing
+  anchor hashes and the API's signing bytes are unchanged.
+- OpenAPI now models paid responses as `{data, attestation}`, documents all v2
+  signed fields and registry readiness, and describes `issued_at` as the
+  signer's assertion rather than objective time.
 
 ## 1. Verified current architecture
 
@@ -32,31 +66,26 @@ source references and deployment documentation only.
   design until an authenticated backend reconstructs authoritative evidence.
 - API anchoring now accepts only a complete authentic v2 compliance envelope,
   then anchors `keccak256(signature bytes)`.
-- API baseline: 59 tests pass. Canonicalization has only a small happy-path
-  test set, not the RFC8785 conformance corpus.
-- OpenAPI has drift: its generic Attestation description still describes the
-  legacy three-field signing input, and some response schemas do not accurately
-  model the outer `{data, attestation}` envelope.
+- API trust-foundation baseline: 63 tests pass plus TypeScript typecheck.
+- OpenAPI accurately models v2 metadata, full signed envelopes, full-envelope
+  anchoring, and the versioned key registry.
 - Operational logging is partial. Payment events are structured stderr JSON,
   but there is no shared request ID, durable payment ledger, verification
   metric, or signing/anchor failure metric.
 
 ### Verification surfaces
 
-- The SDK and browser reconstruct v2 JCS and retain an explicit legacy v1 path.
-  Both fetch the exact key live and accept active/retired status, but neither is
-  offline. Neither currently enforces the key validity interval.
-- The CLI calls the SDK using an inert account object for free verification,
-  needs live key discovery, collapses results to valid/invalid, has no test
-  suite, and still sends only a signature to `/anchor`.
-- The SDK also sends only a signature to `/anchor`, while the API now requires
-  a full envelope. The SDK's OFAC and SEC types have drifted from API responses.
-- The GitHub Action's paid-result verifier still reconstructs legacy v1 bytes
-  and fetches only the current key. Production v2 paid results therefore fail
-  its verification path even though its two legacy-oriented tests pass.
-- The website's verifier is client-side but online-key-dependent. Some copy
-  overstates the signed timestamp and source truth. Public SDK/anchor examples
-  still use the removed signature-only request.
+- The SDK has a zero-network shared verifier and a separate explicit online
+  discovery wrapper. The browser remains an online convenience surface but
+  derives the exact key ID, enforces intervals/lifecycle, and reports the same
+  three top-level states.
+- The CLI consumes the shared verifier with explicit trust files and has a real
+  offline/online/exit-code test suite. It sends complete envelopes to `/anchor`.
+- The SDK sends complete envelopes to `/anchor`. Its older OFAC/SEC response
+  type drift is outside this trust-foundation slice and remains tracked.
+- The GitHub Action verifies v2 and explicit v1 exact-key results, freshness,
+  SPKI identity, lifecycle, and strict validity boundaries, and runs the shared
+  RFC8785 vectors.
 
 ### Evidence producers and consumers
 
@@ -93,26 +122,16 @@ source references and deployment documentation only.
 
 ## 2. Highest cryptographic risks
 
-1. **Consumer/signing-format drift:** the Action verifies legacy bytes against
-   production v2 responses. SDK/CLI/site anchoring also uses an obsolete body.
-2. **Offline-verification claim gap:** all current consumer verifiers need a
-   live registry and have no pinned trust-root input.
-3. **Incomplete key lifecycle:** historical source data is empty, active
+1. **Production activation boundary:** historical source data is empty, active
    activation time is optional, no first controlled rotation has proven the
-   process, and consumers do not uniformly enforce validity intervals.
-4. **Unsigned registry trust:** registry JSON is protected only by live HTTPS.
+   process, and the live record currently has no defensible `valid_from`.
+2. **Unsigned registry trust:** registry JSON is protected only by live HTTPS.
    A downloaded/embedded key record has no authenticated snapshot or pinned
    root, so it cannot alone establish offline publisher identity.
-5. **Insufficient canonicalization conformance tests:** three implementations
-   duplicate security-sensitive JCS code with no official number/string corpus
-   and no duplicate-key parser test.
-6. **Verification result ambiguity:** current `valid: boolean` loses the
-   difference between tampered, distrusted, unknown-key, stale, and unsupported.
-7. **Legacy duplicate signer:** the Tempo spike claims production equivalence
+3. **Legacy duplicate signer:** the Tempo spike claims production equivalence
    but implements only legacy v1 semantics.
-8. **Timestamp overclaim:** an Ed25519 signature authenticates the signer's
-   timestamp assertion; only an independently verified checkpoint establishes
-   an external no-later-than time.
+4. **First controlled rotation:** code and runbooks are ready, but production
+   history cannot be proven until an intentionally bounded rotation is run.
 
 ## 3. Target architecture
 
@@ -204,18 +223,18 @@ evidence.
 
 ### P0 — repair the existing trust foundation
 
-1. Fix the GitHub Action to verify v2 exact-key envelopes, key validity windows,
+1. **Complete.** Fix the GitHub Action to verify v2 exact-key envelopes, key validity windows,
    lifecycle status, issuer/purpose, freshness, and legacy v1 explicitly. Add
    tamper, unknown, retired, compromised, validity-window, and unsupported
    version tests.
-2. Add an isomorphic verifier API that accepts caller-supplied key records with
+2. **Complete.** Add an isomorphic verifier API that accepts caller-supplied key records with
    no network behavior; keep online discovery as an explicit wrapper. Introduce
    `VALID`, `INVALID`, and `UNVERIFIABLE` component-aware reports.
-3. Make CLI verification truly offline with an explicit trust-root/key-registry
+3. **Complete.** Make CLI verification truly offline with an explicit trust-root/key-registry
    file and add tests. Network key fetching becomes opt-in.
-4. Validate registry history at boot/test, publish full lifecycle fields, add
+4. **Complete (owner activation boundary pending).** Validate registry history at boot/test, publish full lifecycle fields, add
    RFC8785 conformance vectors, and document/test normal and emergency rotation.
-5. Correct SDK/CLI/site `/anchor` calls and OpenAPI/docs without changing the
+5. **Complete.** Correct SDK/CLI/site `/anchor` calls and OpenAPI/docs without changing the
    server's new complete-envelope requirement.
 
 ### P1 — portable evidence foundation
