@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onchaindiligence.com/schemas/agent-evidence/v0/attestation-key.schema.json",
+  "title": "Agent Evidence v0 trusted Ed25519 key record",
+  "type": "object",
+  "required": ["key_id", "algorithm", "public_key_pem", "status", "valid_from", "valid_until", "status_changed_at"],
+  "properties": {
+    "key_id": { "type": "string", "pattern": "^ed25519-[A-Za-z0-9_-]{16}$" },
+    "algorithm": { "const": "ed25519" },
+    "public_key_pem": {
+      "type": "string",
+      "pattern": "^-----BEGIN PUBLIC KEY-----\\n[A-Za-z0-9+/=\\n]+-----END PUBLIC KEY-----\\n?$",
+      "maxLength": 4096
+    },
+    "status": { "enum": ["active", "retired", "revoked", "compromised"] },
+    "valid_from": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/timestamp" },
+        { "type": "null" }
+      ]
+    },
+    "valid_until": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/timestamp" },
+        { "type": "null" }
+      ]
+    },
+    "status_changed_at": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/timestamp" },
+        { "type": "null" }
+      ]
+    },
+    "status_reason": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "replacement_key_id": {
+      "anyOf": [
+        { "type": "string", "pattern": "^ed25519-[A-Za-z0-9_-]{16}$" },
+        { "type": "null" }
+      ]
+    },
+    "compromised_at": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/timestamp" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "type": "object", "properties": { "status": { "const": "active" } }, "required": ["status"] },
+      "then": { "type": "object", "properties": { "valid_until": { "type": "null" } } }
+    },
+    {
+      "if": { "type": "object", "properties": { "status": { "const": "retired" } }, "required": ["status"] },
+      "then": {
+        "type": "object",
+        "properties": {
+          "valid_from": { "$ref": "common.schema.json#/$defs/timestamp" },
+          "valid_until": { "$ref": "common.schema.json#/$defs/timestamp" },
+          "status_changed_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+        }
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "status": { "const": "compromised" } }, "required": ["status"] },
+      "then": {
+        "type": "object",
+        "required": ["compromised_at"],
+        "properties": {
+          "compromised_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+          "status_changed_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+        }
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "status": { "const": "revoked" } }, "required": ["status"] },
+      "then": {
+        "type": "object",
+        "required": ["status_reason"],
+        "properties": {
+          "status_reason": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "status_changed_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

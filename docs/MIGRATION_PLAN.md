@@ -9,6 +9,11 @@ intentionally **not strict-offline-ready** until the owner supplies the current
 key's first defensible activation boundary; the public registry exposes this as
 readiness metadata instead of allowing verifiers to infer a date.
 
+P1 item 6 is **complete**. The v0 representation boundary now has strict Draft
+2020-12 JSON Schemas, public schema URLs, deterministic all-record-kind DSSE
+fixtures, and language-neutral negative/tri-state cases. P1 item 7 (the
+Python-first implementation) is the next implementation slice.
+
 ### P0 completion record (2026-08-28)
 
 - The TypeScript SDK now exports a zero-network, isomorphic v1/v2 verifier with
@@ -36,6 +41,22 @@ readiness metadata instead of allowing verifiers to infer a date.
 - OpenAPI now models paid responses as `{data, attestation}`, documents all v2
   signed fields and registry readiness, and describes `issued_at` as the
   signer's assertion rather than objective time.
+
+### P1.6 completion record (2026-08-28)
+
+- Seven strict Draft 2020-12 schemas define common values, key records, DSSE,
+  source proofs, all eight record kinds, signed payloads, and portable files.
+- Exact timestamp syntax, proof discriminators, verification-material
+  containers, response embedding/reference exclusivity, and precision-safe
+  numeric representations are closed at the schema boundary.
+- The deterministic corpus contains a real Ed25519 DSSE full graph plus cases
+  for invalid signature, valid-but-noncanonical signed bytes, missing parents,
+  outer/inner version mismatch, absent caller trust, and duplicate JSON names.
+- Automated tests compile every schema in strict mode, recompute every record
+  and bundle ID, validate graph roots/reachability, verify DSSE PAE bytes, and
+  prove static fixtures match their deterministic generator.
+- Schema copies are published from the website repository at the stable `$id`
+  paths; embedded test keys remain explicitly untrusted hints.
 
 ## 1. Verified current architecture
 
@@ -239,7 +260,7 @@ evidence.
 
 ### P1 — portable evidence foundation
 
-6. Publish the Agent Evidence v0 JSON Schemas and language-neutral conformance
+6. **Complete.** Publish the Agent Evidence v0 JSON Schemas and language-neutral conformance
    fixtures.
 7. Implement the Python package first: deterministic records, DSSE sealing,
    DAG validation, trust policy, and offline verification.

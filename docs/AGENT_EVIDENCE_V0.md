@@ -4,7 +4,13 @@ Status: design specification; implementation must cite the exact revision it
 implements.
 
 Specification ID: `onchaindiligence.agent-evidence.v0`
-Last updated: 2026-08-27
+Last updated: 2026-08-28
+
+Normative JSON Schemas are indexed by
+`spec/agent-evidence/v0/schema/catalog.json` and published at
+`https://onchaindiligence.com/schemas/agent-evidence/v0/catalog.json`. The
+language-neutral corpus is under `spec/agent-evidence/v0/conformance`; its
+manifest records the expected tri-state result for every case.
 
 ## 1. Scope
 
@@ -22,6 +28,10 @@ Normative terms `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are used as in RFC 2119.
   object names, only Unicode strings, and IEEE-754-safe JSON numbers. Monetary
   amounts, chain IDs, block numbers, counters, and other precision-sensitive
   integers MUST be decimal strings.
+- Normative timestamp fields MUST be valid UTC date-times in the exact lexical
+  form `YYYY-MM-DDTHH:mm:ss.sssZ`. This removes cross-runtime ambiguity around
+  offsets and fractional precision. These values remain signer assertions
+  unless backed by an independent timestamp proof.
 - SHA-256 is the v0 content-digest algorithm.
 - New signatures use Ed25519 in a
   [DSSE v1](https://github.com/secure-systems-lab/dsse/blob/master/envelope.md)
@@ -66,6 +76,13 @@ payload contains the authoritative version. A mismatch is `INVALID`.
 updated with a newer trust snapshot or inclusion proof without changing the
 signed evidence. Embedded material is never trusted merely because it is
 embedded.
+
+The v0 portable-file schema uses three typed containers: `keys` contains the
+key-record shape from section 7; each `registry_snapshots` item contains
+`media_type`, a SHA-256 `digest`, and `value`; each `anchors` item contains an
+`anchor_type` and `value`. Snapshot and anchor payload formats are selected by
+their discriminator and are verified only when the caller's policy supports
+that format. Unknown or untrusted material remains a hint, not a trust root.
 
 ## 4. Signed bundle payload
 
@@ -269,6 +286,40 @@ Proof types supported by v0:
    with its original `JSON.stringify({data, issued_at, key_id})` semantics.
 4. `external-digest`: a typed digest/reference with no source signature. It can
    establish graph integrity but does not establish source attribution.
+
+Proof objects use the following exact discriminated shapes. This closes the
+representation boundary without changing the trust semantics above:
+
+```json
+{
+  "proof_type": "dsse-ed25519-v1",
+  "statement_media_type": "application/example+json",
+  "envelope": { "payloadType": "...", "payload": "...", "signatures": [] }
+}
+```
+
+```json
+{
+  "proof_type": "onchaindiligence-attestation-v2",
+  "envelope": { "data": {}, "attestation": {} }
+}
+```
+
+The v1 proof has the same outer shape with
+`proof_type: "onchaindiligence-attestation-v1"`; its attestation MUST omit
+`schema_version`. An external digest proof is:
+
+```json
+{
+  "proof_type": "external-digest",
+  "media_type": "application/example",
+  "digest": { "sha256": "<43-character unpadded base64url>" },
+  "reference": "https://example.invalid/optional-immutable-reference"
+}
+```
+
+`reference` is optional. A digest proof never becomes publisher-signed merely
+because referenced content is retrievable.
 
 A key record is:
 
