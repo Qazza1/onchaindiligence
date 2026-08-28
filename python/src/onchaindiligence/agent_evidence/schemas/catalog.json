@@ -1,0 +1,20 @@
+{
+  "specification_id": "onchaindiligence.agent-evidence.v0",
+  "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+  "schemas": [
+    "common.schema.json",
+    "attestation-key.schema.json",
+    "dsse-envelope.schema.json",
+    "proof.schema.json",
+    "record.schema.json",
+    "bundle-payload.schema.json",
+    "portable-file.schema.json"
+  ],
+  "entry_points": {
+    "portable_file": "portable-file.schema.json",
+    "signed_payload": "bundle-payload.schema.json",
+    "record": "record.schema.json",
+    "proof": "proof.schema.json",
+    "trusted_key_record": "attestation-key.schema.json"
+  }
+}

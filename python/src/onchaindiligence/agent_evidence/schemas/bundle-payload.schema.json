@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onchaindiligence.com/schemas/agent-evidence/v0/bundle-payload.schema.json",
+  "title": "Agent Evidence v0 signed bundle payload",
+  "type": "object",
+  "required": ["bundle_version", "bundle_id", "created_at", "run_id", "root_ids", "records", "extensions"],
+  "properties": {
+    "bundle_version": { "const": "onchaindiligence.agent-evidence.bundle.v0" },
+    "bundle_id": { "$ref": "common.schema.json#/$defs/contentId" },
+    "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "run_id": { "$ref": "common.schema.json#/$defs/contentId" },
+    "root_ids": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/idList" },
+        { "type": "array", "minItems": 1 }
+      ]
+    },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": { "$ref": "record.schema.json" }
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": { "type": "string", "format": "uri" },
+      "additionalProperties": true,
+      "maxProperties": 256
+    }
+  },
+  "additionalProperties": false
+}

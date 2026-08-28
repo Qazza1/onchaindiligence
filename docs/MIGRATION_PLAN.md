@@ -9,10 +9,11 @@ intentionally **not strict-offline-ready** until the owner supplies the current
 key's first defensible activation boundary; the public registry exposes this as
 readiness metadata instead of allowing verifiers to infer a date.
 
-P1 item 6 is **complete**. The v0 representation boundary now has strict Draft
-2020-12 JSON Schemas, public schema URLs, deterministic all-record-kind DSSE
-fixtures, and language-neutral negative/tri-state cases. P1 item 7 (the
-Python-first implementation) is the next implementation slice.
+P1 items 6 and 7 are **complete**. The v0 representation boundary now has
+strict Draft 2020-12 JSON Schemas, public schema URLs, deterministic
+all-record-kind DSSE fixtures, language-neutral negative/tri-state cases, and a
+typed Python producer/verifier package. P1 item 8 (a real two-provider
+production bundle slice) is the next implementation slice.
 
 ### P0 completion record (2026-08-28)
 
@@ -57,6 +58,31 @@ Python-first implementation) is the next implementation slice.
   prove static fixtures match their deterministic generator.
 - Schema copies are published from the website repository at the stable `$id`
   paths; embedded test keys remain explicitly untrusted hints.
+
+### P1.7 completion record (2026-08-28)
+
+- `python/` now contains the typed `onchaindiligence-agent-evidence` package,
+  a zero-network CLI, minimal runnable examples, and build metadata suitable
+  for a future PyPI release.
+- The public API constructs deterministic records and payloads, validates the
+  complete evidence DAG, seals Ed25519 DSSE envelopes, and returns explicit
+  component-aware `VALID`, `INVALID`, or `UNVERIFIABLE` verification reports.
+- Verification accepts trust only through a caller-supplied `TrustPolicy`.
+  Embedded keys remain untrusted hints; missing activation boundaries,
+  unavailable referenced evidence, unsupported anchor material, signature
+  thresholds, lifecycle history, expiration, and freshness remain visible.
+- The wheel embeds byte-identical P1.6 schemas, catalog, and core conformance
+  corpus and resolves every schema reference locally. Python reproduces the
+  TypeScript full-graph fixture exactly and executes the shared positive,
+  negative, parser, canonicalization, and tri-state cases.
+- Source DSSE, current v2, and legacy v1 proofs are supported conservatively.
+  Current/legacy OnChainDiligence proofs cannot be relabeled as a different
+  publisher; retired DSSE source keys without a signed proof time and legacy
+  object-order ambiguity resolve to `UNVERIFIABLE` rather than invented facts.
+- The local release gate is 31 Python tests, strict MyPy, Ruff formatting and
+  security lint, dependency consistency/audit, wheel/sdist build and isolated
+  wheel import, plus the unchanged API's 63 tests, four schema/corpus tests,
+  and TypeScript typecheck. CI repeats Python tests on 3.10, 3.11, and 3.12.
 
 ## 1. Verified current architecture
 
@@ -262,8 +288,8 @@ evidence.
 
 6. **Complete.** Publish the Agent Evidence v0 JSON Schemas and language-neutral conformance
    fixtures.
-7. Implement the Python package first: deterministic records, DSSE sealing,
-   DAG validation, trust policy, and offline verification.
+7. **Complete.** Implement the Python package first: deterministic records,
+   DSSE sealing, DAG validation, trust policy, and offline verification.
 8. Implement a real bundle slice using at least two existing production
    compliance results; preserve each original envelope verbatim.
 9. Add first-class policy and decision records with exact evidence references.
@@ -292,6 +318,8 @@ not planned.
 
 Normal implementation is unblocked. These later decisions need the owner:
 
+- choose and commit the package/repository license, confirm the public package
+  name, and configure a PyPI Trusted Publisher before the first public release;
 - the offline registry root custody model and threshold signers;
 - the customer identity provider before app persistence becomes multi-tenant;
 - retention/privacy policy for optional hosted raw evidence;

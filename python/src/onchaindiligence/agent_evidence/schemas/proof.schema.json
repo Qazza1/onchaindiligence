@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onchaindiligence.com/schemas/agent-evidence/v0/proof.schema.json",
+  "title": "Agent Evidence v0 source proof",
+  "oneOf": [
+    { "$ref": "#/$defs/dsseProof" },
+    { "$ref": "#/$defs/attestationV2Proof" },
+    { "$ref": "#/$defs/attestationV1Proof" },
+    { "$ref": "#/$defs/externalDigestProof" }
+  ],
+  "$defs": {
+    "dsseProof": {
+      "type": "object",
+      "required": ["proof_type", "statement_media_type", "envelope"],
+      "properties": {
+        "proof_type": { "const": "dsse-ed25519-v1" },
+        "statement_media_type": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "envelope": { "$ref": "dsse-envelope.schema.json" }
+      },
+      "additionalProperties": false
+    },
+    "v2Envelope": {
+      "type": "object",
+      "required": ["data", "attestation"],
+      "properties": {
+        "data": {},
+        "attestation": {
+          "type": "object",
+          "required": ["signed", "schema_version", "issuer", "purpose", "issued_at", "key_id", "algorithm", "canonicalization", "signature"],
+          "properties": {
+            "signed": { "const": true },
+            "schema_version": { "const": "onchaindiligence.attestation.v2" },
+            "issuer": { "type": "string", "format": "uri" },
+            "purpose": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "issued_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "key_id": { "type": "string", "pattern": "^ed25519-[A-Za-z0-9_-]{16}$" },
+            "algorithm": { "const": "ed25519" },
+            "canonicalization": { "const": "RFC8785" },
+            "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" },
+            "signing_input_hint": { "type": "string", "maxLength": 4096 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "v1Envelope": {
+      "type": "object",
+      "required": ["data", "attestation"],
+      "properties": {
+        "data": {},
+        "attestation": {
+          "type": "object",
+          "required": ["signed", "issued_at", "key_id", "algorithm", "signature"],
+          "properties": {
+            "signed": { "const": true },
+            "issued_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "key_id": { "type": "string", "pattern": "^ed25519-[A-Za-z0-9_-]{16}$" },
+            "algorithm": { "const": "ed25519" },
+            "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" },
+            "schema_version": false
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "attestationV2Proof": {
+      "type": "object",
+      "required": ["proof_type", "envelope"],
+      "properties": {
+        "proof_type": { "const": "onchaindiligence-attestation-v2" },
+        "envelope": { "$ref": "#/$defs/v2Envelope" }
+      },
+      "additionalProperties": false
+    },
+    "attestationV1Proof": {
+      "type": "object",
+      "required": ["proof_type", "envelope"],
+      "properties": {
+        "proof_type": { "const": "onchaindiligence-attestation-v1" },
+        "envelope": { "$ref": "#/$defs/v1Envelope" }
+      },
+      "additionalProperties": false
+    },
+    "externalDigestProof": {
+      "type": "object",
+      "required": ["proof_type", "media_type", "digest"],
+      "properties": {
+        "proof_type": { "const": "external-digest" },
+        "media_type": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "digest": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+        "reference": { "type": "string", "format": "uri", "maxLength": 8192 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

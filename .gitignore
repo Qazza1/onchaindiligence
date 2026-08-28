@@ -2,3 +2,10 @@
 node_modules/
 dist/
 *.log
+python/.venv/
+python/.mypy_cache/
+python/.pytest_cache/
+python/.ruff_cache/
+python/.coverage
+__pycache__/
+*.py[cod]

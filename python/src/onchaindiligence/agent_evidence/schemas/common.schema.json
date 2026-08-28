@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onchaindiligence.com/schemas/agent-evidence/v0/common.schema.json",
+  "title": "Agent Evidence v0 common values",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "contentId": {
+      "type": "string",
+      "pattern": "^sha256:[A-Za-z0-9_-]{43}$"
+    },
+    "sha256Digest": {
+      "type": "object",
+      "required": ["sha256"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+      },
+      "additionalProperties": false
+    },
+    "decimalString": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "nonEmptyString": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "idList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contentId" },
+      "uniqueItems": true,
+      "maxItems": 10000
+    }
+  }
+}

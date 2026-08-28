@@ -6,6 +6,9 @@ implements.
 Specification ID: `onchaindiligence.agent-evidence.v0`
 Last updated: 2026-08-28
 
+The Python reference implementation at `python/` version `0.1.0` implements
+this 2026-08-28 revision and consumes the same packaged conformance corpus.
+
 Normative JSON Schemas are indexed by
 `spec/agent-evidence/v0/schema/catalog.json` and published at
 `https://onchaindiligence.com/schemas/agent-evidence/v0/catalog.json`. The

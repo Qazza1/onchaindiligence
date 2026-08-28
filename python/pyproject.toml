@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling>=1.29,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "onchaindiligence-agent-evidence"
+version = "0.1.0"
+description = "Deterministic construction and offline verification of OnChainDiligence Agent Evidence v0 bundles"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "OnChainDiligence" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
+]
+dependencies = [
+  "cryptography>=46.0.7,<51",
+  "jsonschema[format]>=4.25.1,<5",
+  "referencing>=0.36.2,<0.38",
+  "rfc8785==0.1.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2.2,<2",
+  "mypy>=1.18.2,<3",
+  "pip-audit>=2.10.1,<3",
+  "pytest>=8.4.2,<10",
+  "ruff>=0.15.5,<0.17",
+  "types-jsonschema>=4.25.1,<5",
+]
+
+[project.scripts]
+ocd-evidence = "onchaindiligence.agent_evidence.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/Qazza1/onchaindiligence/tree/main/python"
+Repository = "https://github.com/Qazza1/onchaindiligence"
+Specification = "https://github.com/Qazza1/onchaindiligence/blob/main/docs/AGENT_EVIDENCE_V0.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/onchaindiligence"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "examples", "README.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4", "UP", "RUF", "S"]
+ignore = ["S101"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+packages = ["onchaindiligence.agent_evidence"]

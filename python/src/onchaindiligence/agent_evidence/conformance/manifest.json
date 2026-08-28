@@ -1,0 +1,74 @@
+{
+  "corpus_id": "onchaindiligence.agent-evidence.v0.conformance",
+  "corpus_version": "2026-08-28",
+  "test_key_warning": "Public deterministic test key only. Never trust or deploy it.",
+  "base_fixture": "valid-full-graph.json",
+  "cases": [
+    {
+      "id": "valid-full-graph",
+      "fixture": "valid-full-graph.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "VALID",
+      "covers": ["all-record-kinds", "record-ids", "bundle-id", "dag", "dsse", "key-window"]
+    },
+    {
+      "id": "invalid-signature",
+      "fixture": "valid-full-graph.json",
+      "outer_json_patch": [
+        {
+          "op": "replace",
+          "path": "/envelope/signatures/0/sig",
+          "value": "cpQSw7HTSuaPKkYzc/FXL/9lplP5ZEceSesmhQioOqtYXRwdf6jVrnuHZ06+AnfxaFybj/s6oNz5AnZTYF/wBQ=="
+        }
+      ],
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "dsse-signature"
+    },
+    {
+      "id": "outer-version-mismatch",
+      "fixture": "valid-full-graph.json",
+      "outer_json_patch": [
+        {
+          "op": "replace",
+          "path": "/bundle_version",
+          "value": "onchaindiligence.agent-evidence.bundle.v9"
+        }
+      ],
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "outer-inner-version-mismatch"
+    },
+    {
+      "id": "noncanonical-signed-payload",
+      "fixture": "noncanonical-payload.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "payload-not-rfc8785",
+      "note": "The DSSE signature is valid over payload bytes prefixed by one ASCII space."
+    },
+    {
+      "id": "missing-parent",
+      "fixture": "missing-parent.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "missing-parent",
+      "note": "The DSSE signature is valid; the changed record also intentionally exposes a record-ID mismatch."
+    },
+    {
+      "id": "unknown-key",
+      "fixture": "valid-full-graph.json",
+      "trusted_key_ids": [],
+      "expected": "UNVERIFIABLE",
+      "reason": "no-caller-trusted-key",
+      "note": "The embedded key is a hint and MUST NOT become trusted merely because it is embedded."
+    },
+    {
+      "id": "duplicate-outer-key",
+      "fixture": "duplicate-outer-key.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "duplicate-json-name"
+    }
+  ]
+}
