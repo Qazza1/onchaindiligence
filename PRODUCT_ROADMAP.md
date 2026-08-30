@@ -1,6 +1,16 @@
 # OnchainDiligence product roadmap
 
-Last updated: 2026-08-27
+Last updated: 2026-08-29
+
+## Current Agent Evidence delivery record
+
+- P1.6: Agent Evidence v0 specification, schemas, and conformance corpus.
+- P1.7: production Python construction and offline verification package.
+- P1.8: real multi-provider production evidence bundle and public proof.
+- P1.9: focused external TypeScript/Node package, packed-artifact consumer,
+  offline tri-state verification, and TypeScript/Python compatibility. Source
+  and package artifact are ready; npm publication remains an owner-controlled
+  release action.
 
 > **Superseded for forward implementation on 2026-08-27.** The governing
 > direction is now Agent Evidence and Decision Provenance. Use

@@ -106,6 +106,28 @@ adapters/APIs) is the next implementation slice.
   capture and their private material was never persisted. This does not alter
   or work around the unresolved production API key activation boundary.
 
+### P1.9 completion record (2026-08-29)
+
+- `@onchaindiligence/agent-evidence` is a focused Node.js/TypeScript package
+  rather than an expansion of the online compliance SDK. It exposes the stable
+  v0 construction, content ID, DAG validation, Ed25519 DSSE, caller trust, key
+  lifecycle, and offline tri-state verification boundary.
+- The package embeds byte-identical canonical schemas and conformance files;
+  its build fails on drift and never resolves schemas or keys over the network.
+- The TypeScript verifier consumes the full P1.6 corpus and the real P1.8
+  multi-provider production reference. Missing source-witness trust remains
+  `UNVERIFIABLE` and embedded key material remains non-authoritative.
+- A clean external TypeScript project installs only an `npm pack` artifact,
+  compiles against public declarations, then runs with HTTP, TLS, socket, and
+  `fetch` access denied. It creates the complete eight-kind graph, seals it,
+  and demonstrates genuine `VALID`, mutated-signature `INVALID`, and
+  missing-trust `UNVERIFIABLE` results.
+- Shared immutable vectors prove TypeScript-to-Python verification and Python
+  producer byte equality. The Python P1.7 suite and workflow remain intact.
+- Package version is `0.1.0`; protocol version remains v0. npm publication is
+  deliberately separate from implementation and requires the owner-controlled
+  registry/trusted-publisher release step.
+
 ## 1. Verified current architecture
 
 This audit covered the API, website, investigations app, TypeScript SDK, CLI,

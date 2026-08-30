@@ -1,0 +1,56 @@
+{
+  "name": "@onchaindiligence/agent-evidence",
+  "version": "0.1.0",
+  "description": "Deterministic Agent Evidence v0 construction, DSSE sealing, and offline tri-state verification for Node.js",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "conformance",
+    "examples",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "sync-assets": "node scripts/sync-assets.mjs",
+    "check:assets": "node scripts/sync-assets.mjs --check",
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run check:assets && npm run clean && tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:external": "npm run build && node test/external-consumer.mjs",
+    "test:cross-language": "npm run build && node test/cross-language.mjs",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "agent-evidence",
+    "dsse",
+    "provenance",
+    "offline-verification",
+    "ed25519"
+  ],
+  "author": "OnChainDiligence",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

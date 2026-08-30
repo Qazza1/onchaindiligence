@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onchaindiligence.com/schemas/agent-evidence/v0/portable-file.schema.json",
+  "title": "Agent Evidence v0 portable file",
+  "type": "object",
+  "required": ["media_type", "bundle_version", "envelope", "verification_material"],
+  "properties": {
+    "media_type": { "const": "application/vnd.onchaindiligence.agent-evidence+json" },
+    "bundle_version": { "const": "onchaindiligence.agent-evidence.bundle.v0" },
+    "envelope": {
+      "allOf": [
+        { "$ref": "dsse-envelope.schema.json" },
+        {
+          "type": "object",
+          "properties": {
+            "payloadType": { "const": "application/vnd.onchaindiligence.agent-evidence.bundle.v0+json" }
+          }
+        }
+      ]
+    },
+    "verification_material": {
+      "type": "object",
+      "required": ["keys", "registry_snapshots", "anchors"],
+      "properties": {
+        "keys": {
+          "type": "array",
+          "items": { "$ref": "attestation-key.schema.json" },
+          "maxItems": 1024
+        },
+        "registry_snapshots": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": ["media_type", "digest", "value"],
+            "properties": {
+              "media_type": { "type": "string", "minLength": 1, "maxLength": 1024 },
+              "digest": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+              "value": {}
+            },
+            "additionalProperties": false
+          }
+        },
+        "anchors": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "required": ["anchor_type", "value"],
+            "properties": {
+              "anchor_type": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "value": {}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onchaindiligence.com/schemas/agent-evidence/v0/record.schema.json",
+  "title": "Agent Evidence v0 graph record",
+  "type": "object",
+  "required": ["id", "record_version", "kind", "parents", "statement", "proofs"],
+  "properties": {
+    "id": { "$ref": "common.schema.json#/$defs/contentId" },
+    "record_version": { "const": "onchaindiligence.agent-evidence.record.v0" },
+    "kind": { "enum": ["principal", "agent", "mandate", "run", "evidence", "policy", "decision", "execution"] },
+    "parents": { "$ref": "common.schema.json#/$defs/idList" },
+    "statement": { "type": "object" },
+    "proofs": {
+      "type": "array",
+      "items": { "$ref": "proof.schema.json" },
+      "maxItems": 64
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "principal" },
+        "parents": { "type": "array", "maxItems": 0 },
+        "statement": { "$ref": "#/$defs/principalStatement" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "agent" },
+        "statement": { "$ref": "#/$defs/agentStatement" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "mandate" },
+        "parents": { "type": "array", "minItems": 1 },
+        "statement": { "$ref": "#/$defs/mandateStatement" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "run" },
+        "parents": { "type": "array", "minItems": 2 },
+        "statement": { "$ref": "#/$defs/runStatement" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "evidence" },
+        "parents": { "type": "array", "minItems": 1 },
+        "statement": { "$ref": "#/$defs/evidenceStatement" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "policy" },
+        "parents": { "type": "array", "minItems": 1 },
+        "statement": { "$ref": "#/$defs/policyStatement" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "decision" },
+        "parents": { "type": "array", "minItems": 3 },
+        "statement": { "$ref": "#/$defs/decisionStatement" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "execution" },
+        "parents": { "type": "array", "minItems": 1 },
+        "statement": { "$ref": "#/$defs/executionStatement" }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "principalStatement": {
+      "type": "object",
+      "required": ["principal_id", "principal_type"],
+      "properties": {
+        "principal_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "principal_type": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "identity_refs": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "required": ["type", "issuer", "subject"],
+            "properties": {
+              "type": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+              "issuer": { "type": "string", "format": "uri", "maxLength": 4096 },
+              "subject": { "$ref": "common.schema.json#/$defs/nonEmptyString" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "display_name": { "type": "string", "maxLength": 1024 }
+      },
+      "additionalProperties": false
+    },
+    "agentStatement": {
+      "type": "object",
+      "required": ["agent_id", "agent_version"],
+      "properties": {
+        "agent_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "agent_version": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "framework": { "type": "string", "maxLength": 1024 },
+        "deployment_ref": { "type": "string", "maxLength": 4096 },
+        "model_ref": { "type": "string", "maxLength": 4096 },
+        "operator_ref": { "$ref": "common.schema.json#/$defs/contentId" }
+      },
+      "additionalProperties": false
+    },
+    "mandateStatement": {
+      "type": "object",
+      "required": ["mandate_id", "principal_ref", "scope", "valid_from", "valid_until"],
+      "properties": {
+        "mandate_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "principal_ref": { "$ref": "common.schema.json#/$defs/contentId" },
+        "scope": { "type": "object" },
+        "valid_from": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "valid_until": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "limits": { "type": "object" },
+        "policy_refs": { "$ref": "common.schema.json#/$defs/idList" },
+        "authorization_ref": { "type": "string", "format": "uri", "maxLength": 8192 },
+        "authorization_digest": { "$ref": "common.schema.json#/$defs/sha256Digest" }
+      },
+      "additionalProperties": false
+    },
+    "runStatement": {
+      "type": "object",
+      "required": ["run_external_id", "agent_ref", "mandate_ref", "started_at"],
+      "properties": {
+        "run_external_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "agent_ref": { "$ref": "common.schema.json#/$defs/contentId" },
+        "mandate_ref": { "$ref": "common.schema.json#/$defs/contentId" },
+        "started_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "ended_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "evidenceStatement": {
+      "type": "object",
+      "required": ["evidence_type", "run_ref", "trust_mode", "source", "tool", "request", "response", "observed_at", "expires_at", "scope"],
+      "properties": {
+        "evidence_type": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "run_ref": { "$ref": "common.schema.json#/$defs/contentId" },
+        "trust_mode": { "enum": ["publisher-signed", "local-witness", "managed-witness", "agent-assertion"] },
+        "source": {
+          "type": "object",
+          "required": ["id", "type"],
+          "properties": {
+            "id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+            "type": { "$ref": "common.schema.json#/$defs/nonEmptyString" }
+          },
+          "additionalProperties": false
+        },
+        "tool": {
+          "type": "object",
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+            "version": { "$ref": "common.schema.json#/$defs/nonEmptyString" }
+          },
+          "additionalProperties": false
+        },
+        "request": {
+          "type": "object",
+          "required": ["digest", "media_type"],
+          "properties": {
+            "digest": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+            "media_type": { "$ref": "common.schema.json#/$defs/nonEmptyString" }
+          },
+          "additionalProperties": false
+        },
+        "response": {
+          "type": "object",
+          "required": ["mode", "media_type", "digest"],
+          "properties": {
+            "mode": { "enum": ["embedded", "reference"] },
+            "media_type": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+            "value": {},
+            "reference": { "type": "string", "format": "uri", "maxLength": 8192 },
+            "digest": { "$ref": "common.schema.json#/$defs/sha256Digest" }
+          },
+          "allOf": [
+            {
+              "if": { "type": "object", "properties": { "mode": { "const": "embedded" } }, "required": ["mode"] },
+              "then": {
+                "type": "object",
+                "required": ["value"],
+                "properties": { "value": {}, "reference": false }
+              }
+            },
+            {
+              "if": { "type": "object", "properties": { "mode": { "const": "reference" } }, "required": ["mode"] },
+              "then": {
+                "type": "object",
+                "required": ["reference"],
+                "properties": {
+                  "reference": { "type": "string", "format": "uri", "maxLength": 8192 },
+                  "value": false
+                }
+              }
+            }
+          ],
+          "additionalProperties": false
+        },
+        "observed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "expires_at": {
+          "anyOf": [
+            { "$ref": "common.schema.json#/$defs/timestamp" },
+            { "type": "null" }
+          ]
+        },
+        "scope": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "policyStatement": {
+      "type": "object",
+      "required": ["policy_id", "version", "digest", "source", "effective_from"],
+      "properties": {
+        "policy_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "version": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "digest": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+        "source": { "type": "string", "format": "uri", "maxLength": 8192 },
+        "effective_from": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "effective_until": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "policy": {}
+      },
+      "additionalProperties": false
+    },
+    "decisionStatement": {
+      "type": "object",
+      "required": ["decision_id", "run_ref", "agent_ref", "decision_type", "outcome", "evidence_refs", "policy_ref", "policy_digest", "decided_at"],
+      "properties": {
+        "decision_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "run_ref": { "$ref": "common.schema.json#/$defs/contentId" },
+        "agent_ref": { "$ref": "common.schema.json#/$defs/contentId" },
+        "decision_type": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "outcome": {},
+        "evidence_refs": {
+          "allOf": [
+            { "$ref": "common.schema.json#/$defs/idList" },
+            { "type": "array", "minItems": 1 }
+          ]
+        },
+        "policy_ref": { "$ref": "common.schema.json#/$defs/contentId" },
+        "policy_digest": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+        "decided_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "executionStatement": {
+      "type": "object",
+      "required": ["execution_id", "decision_ref", "execution_type", "status", "submitted_at"],
+      "properties": {
+        "execution_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "decision_ref": { "$ref": "common.schema.json#/$defs/contentId" },
+        "execution_type": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "status": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "submitted_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "network": { "type": "string", "pattern": "^[a-z0-9-]+:[A-Za-z0-9._-]+$" },
+        "transaction_hash": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "transaction_digest": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+        "sender": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "recipient": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "asset": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "amount": { "$ref": "common.schema.json#/$defs/decimalString" },
+        "confirmed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "block_number": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

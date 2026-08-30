@@ -89,6 +89,16 @@ src/server.ts ──── Hono routes, payment gating, attestation signing
 
 Built with [Hono](https://hono.dev) + TypeScript, deployed on Vercel. See [`DEPLOY.md`](./DEPLOY.md) for deployment and the full environment-variable list.
 
+## Agent Evidence developer packages
+
+The repository contains production Agent Evidence v0 implementations for
+Python and Node.js/TypeScript. The focused
+`@onchaindiligence/agent-evidence` package under
+[`packages/agent-evidence`](./packages/agent-evidence) provides deterministic
+record and bundle construction, Ed25519 DSSE sealing, explicit caller trust,
+and fully offline `VALID` / `INVALID` / `UNVERIFIABLE` verification. It is
+packable and externally validated but is not yet published to npm.
+
 ## Two payment rails
 
 OnchainDiligence settles two ways. This repo is the HTTP API (MPP / pathUSD / Tempo). The [MCP server](https://github.com/Qazza1/onchaindiligence-mcp) exposes the same checks to AI agents and settles in USDC on Base via x402. Same checks, same signed results, different rails for different ecosystems.
