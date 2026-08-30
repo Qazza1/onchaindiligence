@@ -38,6 +38,15 @@
   ],
   "author": "OnChainDiligence",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Qazza1/onchaindiligence.git",
+    "directory": "packages/agent-evidence"
+  },
+  "homepage": "https://github.com/Qazza1/onchaindiligence/tree/main/packages/agent-evidence#readme",
+  "bugs": {
+    "url": "https://github.com/Qazza1/onchaindiligence/issues"
+  },
   "engines": {
     "node": ">=20.19"
   },
