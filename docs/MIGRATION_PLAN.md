@@ -1,7 +1,7 @@
 # Agent Evidence migration plan
 
 Status: governing incremental migration plan
-Last updated: 2026-08-28
+Last updated: 2026-08-30
 
 P0 implementation status: **code-complete**. Items 1–5 have shipped as scoped
 repository changes and are covered by cross-surface tests. Production remains
@@ -106,7 +106,7 @@ adapters/APIs) is the next implementation slice.
   capture and their private material was never persisted. This does not alter
   or work around the unresolved production API key activation boundary.
 
-### P1.9 completion record (2026-08-29)
+### P1.9 completion record (2026-08-30)
 
 - `@onchaindiligence/agent-evidence` is a focused Node.js/TypeScript package
   rather than an expansion of the online compliance SDK. It exposes the stable
@@ -351,8 +351,9 @@ evidence.
 13. Upgrade the public browser verifier to inspect the bundle DAG, decisions,
     executions, trust modes, and uncertainty.
 14. Add minimal MCP verify/bundle metadata support, then selective OTel mapping.
-15. Add the TypeScript construction SDK after the Python behavior and fixtures
-    are stable.
+15. **Complete early as P1.9.** Ship the focused TypeScript construction and
+    offline verification package after the Python behavior and fixtures are
+    stable.
 
 ### Deferred
 
@@ -365,8 +366,8 @@ not planned.
 
 Normal implementation is unblocked. These later decisions need the owner:
 
-- choose and commit the package/repository license, confirm the public package
-  name, and configure a PyPI Trusted Publisher before the first public release;
+- confirm registry ownership and configure trusted publishing for the npm and
+  PyPI packages before their first public releases;
 - the offline registry root custody model and threshold signers;
 - the customer identity provider before app persistence becomes multi-tenant;
 - retention/privacy policy for optional hosted raw evidence;

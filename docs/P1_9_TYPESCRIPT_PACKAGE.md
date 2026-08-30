@@ -1,6 +1,6 @@
 # P1.9 TypeScript package decision
 
-Date: 2026-08-29
+Date: 2026-08-30
 
 P1.9 ships as the focused `@onchaindiligence/agent-evidence` package rather
 than adding the protocol implementation to `@onchaindiligence/sdk`.
