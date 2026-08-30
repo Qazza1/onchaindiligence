@@ -24,5 +24,8 @@ The focused package therefore has:
 - an external packed-artifact consumer test outside `src`;
 - a caller-controlled signing and trust boundary.
 
-The package is npm publish-ready but is not represented as publicly available
-until trusted publishing and package ownership are confirmed.
+`@onchaindiligence/agent-evidence@0.1.0` is publicly available on npm. Its
+first release was independently installed from the registry and verified
+offline by the clean external consumer. A GitHub OIDC release workflow is
+prepared for future releases, pending the owner-side npm Trusted Publisher
+association.

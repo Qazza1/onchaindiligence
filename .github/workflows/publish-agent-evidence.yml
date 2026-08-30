@@ -1,0 +1,38 @@
+name: publish-agent-evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version to publish; run this workflow from tag v<version>.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: github.ref_type == 'tag' && github.ref_name == format('v{0}', inputs.version)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify tag and package version agree
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          ACTUAL_VERSION="$(node -p "require('./packages/agent-evidence/package.json').version")"
+          test "$ACTUAL_VERSION" = "$RELEASE_VERSION"
+      - run: npm run p1.9:test
+      - run: npm run p1.9:external
+      - run: npm publish --workspace @onchaindiligence/agent-evidence --access public

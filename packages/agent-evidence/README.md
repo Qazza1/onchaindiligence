@@ -5,14 +5,17 @@ OnChainDiligence Agent Evidence v0 protocol. It creates deterministic records,
 validates the complete evidence DAG, seals bundles with Ed25519 DSSE, and
 verifies portable bundles offline with caller-supplied trust.
 
-The package is currently **packable and publish-ready, but not yet published to
-npm**. Do not advertise a registry install until the owner completes npm trusted
-publishing. From this repository, test the exact public artifact with:
+The package is publicly available on npm:
 
 ```sh
-npm pack ./packages/agent-evidence
-npm install ./onchaindiligence-agent-evidence-0.1.0.tgz
+npm install @onchaindiligence/agent-evidence
+# or pin the first release
+npm install @onchaindiligence/agent-evidence@0.1.0
 ```
+
+This source README reflects the public release. The immutable README embedded
+in the already-published `0.1.0` tarball still carries its pre-release wording;
+the correction will be included in the next package version.
 
 Node.js 20.19 or newer and ESM are required.
 

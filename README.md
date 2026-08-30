@@ -97,7 +97,13 @@ Python and Node.js/TypeScript. The focused
 [`packages/agent-evidence`](./packages/agent-evidence) provides deterministic
 record and bundle construction, Ed25519 DSSE sealing, explicit caller trust,
 and fully offline `VALID` / `INVALID` / `UNVERIFIABLE` verification. It is
-packable and externally validated but is not yet published to npm.
+publicly available on npm:
+
+```sh
+npm install @onchaindiligence/agent-evidence
+# or pin the first release
+npm install @onchaindiligence/agent-evidence@0.1.0
+```
 
 ## Two payment rails
 

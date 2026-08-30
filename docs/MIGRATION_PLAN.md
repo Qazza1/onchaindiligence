@@ -117,16 +117,16 @@ adapters/APIs) is the next implementation slice.
 - The TypeScript verifier consumes the full P1.6 corpus and the real P1.8
   multi-provider production reference. Missing source-witness trust remains
   `UNVERIFIABLE` and embedded key material remains non-authoritative.
-- A clean external TypeScript project installs only an `npm pack` artifact,
-  compiles against public declarations, then runs with HTTP, TLS, socket, and
-  `fetch` access denied. It creates the complete eight-kind graph, seals it,
-  and demonstrates genuine `VALID`, mutated-signature `INVALID`, and
-  missing-trust `UNVERIFIABLE` results.
+- A clean external TypeScript project installs both an `npm pack` artifact and
+  the public npm package, compiles against public declarations, then runs with
+  HTTP, TLS, socket, and `fetch` access denied. It creates the complete
+  eight-kind graph, seals it, and demonstrates genuine `VALID`,
+  mutated-signature `INVALID`, and missing-trust `UNVERIFIABLE` results.
 - Shared immutable vectors prove TypeScript-to-Python verification and Python
   producer byte equality. The Python P1.7 suite and workflow remain intact.
-- Package version is `0.1.0`; protocol version remains v0. npm publication is
-  deliberately separate from implementation and requires the owner-controlled
-  registry/trusted-publisher release step.
+- Package version is `0.1.0`; protocol version remains v0. The package is
+  publicly available on npm. Future releases will use the prepared GitHub OIDC
+  workflow after the owner configures the npm Trusted Publisher association.
 
 ## 1. Verified current architecture
 
@@ -366,8 +366,7 @@ not planned.
 
 Normal implementation is unblocked. These later decisions need the owner:
 
-- confirm registry ownership and configure trusted publishing for the npm and
-  PyPI packages before their first public releases;
+- configure trusted publishing for future npm and PyPI package releases;
 - the offline registry root custody model and threshold signers;
 - the customer identity provider before app persistence becomes multi-tenant;
 - retention/privacy policy for optional hosted raw evidence;

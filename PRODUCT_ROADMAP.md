@@ -7,10 +7,10 @@ Last updated: 2026-08-30
 - P1.6: Agent Evidence v0 specification, schemas, and conformance corpus.
 - P1.7: production Python construction and offline verification package.
 - P1.8: real multi-provider production evidence bundle and public proof.
-- P1.9: focused external TypeScript/Node package, packed-artifact consumer,
-  offline tri-state verification, and TypeScript/Python compatibility. Source
-  and package artifact are ready; npm publication remains an owner-controlled
-  release action.
+- P1.9: focused external TypeScript/Node package, packed-artifact and public
+  npm consumer verification, offline tri-state verification, and
+  TypeScript/Python compatibility. `@onchaindiligence/agent-evidence@0.1.0`
+  is publicly available on npm.
 
 > **Superseded for forward implementation on 2026-08-27.** The governing
 > direction is now Agent Evidence and Decision Provenance. Use
