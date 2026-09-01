@@ -1,10 +1,21 @@
-# OnchainDiligence — HTTP API
+# OnChainDiligence — Verifiable evidence infrastructure for autonomous agents
 
-A pay-per-call compliance API: **crypto sanctions screening**, **OFAC name screening**, and **UK company verification**, separately or bundled, with payment collected per request via the **Machine Payments Protocol (MPP)** on **Tempo**. Every response is a cryptographically signed attestation you can verify yourself — and optionally anchor on-chain.
+OnChainDiligence is verifiable evidence infrastructure for autonomous agents,
+starting with financial agents.
 
-Live at **`https://api.onchaindiligence.com`** · Docs at [onchaindiligence.com/docs](https://onchaindiligence.com/docs) · Agent/MCP version: [onchaindiligence-mcp](https://github.com/Qazza1/onchaindiligence-mcp) · On-chain anchoring: [onchaindiligence-anchor](https://github.com/Qazza1/onchaindiligence-anchor).
+**Mandate → Evidence → Policy → Decision → Execution → Verification**
 
-No account, subscription, or sales conversation — an agent (or a script, or another service) asks "is this wallet sanctioned?" or "is this UK company real and who controls it?" and pays a few cents per answer.
+The project includes the Agent Evidence protocol, Python and TypeScript SDKs,
+signed evidence bundles, and fully offline verification. It also ships real
+reference integrations, including [Technocore signed-message evidence](./packages/agent-evidence/README.md#technocore-signed-message-evidence)
+and its [public contribution receipt](./docs/TECHNOCORE_PUBLIC_RECEIPT.json).
+
+The existing pay-per-call compliance API is a production Evidence Provider /
+reference implementation: crypto sanctions screening, OFAC name screening, and
+UK company verification, with cryptographically signed attestations and optional
+on-chain anchoring.
+
+Live API: **`https://api.onchaindiligence.com`** · Docs: [onchaindiligence.com/docs](https://onchaindiligence.com/docs) · Agent/MCP version: [onchaindiligence-mcp](https://github.com/Qazza1/onchaindiligence-mcp) · On-chain anchoring: [onchaindiligence-anchor](https://github.com/Qazza1/onchaindiligence-anchor).
 
 ---
 
