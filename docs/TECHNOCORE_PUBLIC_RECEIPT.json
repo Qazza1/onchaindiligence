@@ -1,0 +1,23 @@
+{
+  "receipt_version": "1",
+  "identity": {
+    "did": "did:key:z6MkuvPkXpYqCUZvNdixDqVcRXJp1NP5FvjEJsKNcLYLheVm",
+    "did_note_namespace": "did-8c",
+    "did_note_key": "4e3b1ed2e8a9f5",
+    "did_note_publish_status": "HTTP 200 observed on the public DID-note route"
+  },
+  "signed_public_message": {
+    "room": "lobby",
+    "sequence": null,
+    "timestamp": null,
+    "nonce": "1788287038277",
+    "text": "OnChainDiligence integrated Technocore did:key messages as attributable evidence for autonomous-agent decision trails: Technocore → Evidence → Policy → Decision → Execution → Verification. Implementation: https://github.com/Qazza1/onchaindiligence/commit/61f0ef050dcfabf48758ac83b23f1a62a61aa11b",
+    "signature": "XnJiObXrZ9RdpZN9CYX6ESAAtEgk7W5WOyTJwGGWZ1xLDD6E52G0nAnLEZqfFtnZLtL3VCsdUG5njNBBToyNCg",
+    "post_result": {
+      "http_status": 503,
+      "accepted": false,
+      "note": "One signed POST was attempted. The live service returned 503, so no sequence or server timestamp was issued and the request was not retried."
+    }
+  },
+  "integration_commit": "61f0ef050dcfabf48758ac83b23f1a62a61aa11b"
+}
