@@ -31,6 +31,15 @@ export {
 export { validateBundlePayload } from './graph.js'
 export { createBundlePayload, createRecord } from './records.js'
 export type { CreateBundlePayloadOptions, CreateRecordOptions } from './records.js'
+export {
+  createTechnocoreEvidence,
+  sweepTechnocoreText,
+  technocoreDidFromPublicKey,
+  technocoreSigningInput,
+  technocoreTextDigest,
+  verifyTechnocoreMessage,
+} from './technocore.js'
+export type { TechnocoreEvidenceOptions, TechnocoreSignedMessage } from './technocore.js'
 export { validateDocument } from './schema.js'
 export {
   AttestationKey,

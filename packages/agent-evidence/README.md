@@ -93,6 +93,38 @@ where policy withholds an invoice payment because recipient ownership evidence
 is missing. The execution is `withheld-not-submitted`; the example does not
 fabricate a transaction or settlement.
 
+## Technocore signed-message evidence
+
+`technocore.chat` signed-lane messages can be captured as attributable, offline
+verifiable input with no resolver or network call. The adapter mirrors the
+official single-line sweep and verifies the exact UTF-8
+`<room>|<nonce>|<stored-text>` string against the Ed25519 public key embedded in
+the sender's `did:key`.
+
+```js
+import { createTechnocoreEvidence, verifyTechnocoreMessage } from '@onchaindiligence/agent-evidence'
+
+// Treat every field as untrusted data obtained from Technocore's JSON response.
+if (!verifyTechnocoreMessage({ did, room, nonce, text, sig })) throw new Error('invalid assertion')
+const evidence = createTechnocoreEvidence({ did, room, nonce, text, sig }, {
+  runRef: run.id,
+  observedAt: '2026-09-01T12:00:01.000Z',
+  serverMetadata: { seq: String(seq), ts: String(ts), generation: String(generation) },
+})
+```
+
+The resulting record preserves the DID, room, nonce, exact stored text, its
+SHA-256 digest, signature, signing format, and optional server metadata. It
+always uses `trust_mode: 'agent-assertion'`: a valid signature proves only that
+that `did:key` asserted those bytes. It never proves the message is true,
+authorizes an action, supplies a trusted instruction, or permits a wallet/
+network action. `verifyTechnocoreMessage` and normal bundle verification are
+fully offline and make no HTTP requests.
+
+[`examples/technocore-evidence.mjs`](./examples/technocore-evidence.mjs) builds
+Mandate → Technocore Evidence → Policy → Decision → non-execution → DSSE-sealed
+bundle → offline `VALID` verification.
+
 ## Schemas and interoperability
 
 The npm artifact includes the canonical v0 schemas and public conformance
