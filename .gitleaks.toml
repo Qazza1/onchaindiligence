@@ -33,6 +33,9 @@ regexes = [
   '''0x\.\.\.''',
   '''0x<[^>]+>''',
 
+  # Public Technocore DID from the publication receipt; intentionally exact-value only.
+  '''^did:key:z6MkuvPkXpYqCUZvNdixDqVcRXJp1NP5FvjEJsKNcLYLheVm$''',
+
   # ── NOTE ──────────────────────────────────────────────────────────────
   # Deliberately NOT allowlisting a blanket "any 64-hex string" here.
   # Transaction hashes and keccak256 digests are also 64 hex, but so are
