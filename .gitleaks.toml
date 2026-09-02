@@ -15,6 +15,7 @@ useDefault = true
 
 [allowlist]
 description = "Public, non-secret values legitimate in this codebase"
+regexTarget = "secret"
 
 # --- Files that are examples/docs by nature ---
 paths = [
@@ -33,8 +34,9 @@ regexes = [
   '''0x\.\.\.''',
   '''0x<[^>]+>''',
 
-  # Public Technocore DID from the publication receipt; intentionally exact-value only.
-  '''^did:key:z6MkuvPkXpYqCUZvNdixDqVcRXJp1NP5FvjEJsKNcLYLheVm$''',
+  # generic-api-key captures the base58 value after `did:key:`. This is the
+  # exact intentionally public Technocore DID and nothing else.
+  '''^z6MkuvPkXpYqCUZvNdixDqVcRXJp1NP5FvjEJsKNcLYLheVm$''',
 
   # ── NOTE ──────────────────────────────────────────────────────────────
   # Deliberately NOT allowlisting a blanket "any 64-hex string" here.
