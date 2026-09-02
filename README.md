@@ -112,8 +112,8 @@ publicly available on npm:
 
 ```sh
 npm install @onchaindiligence/agent-evidence
-# or pin the first release
-npm install @onchaindiligence/agent-evidence@0.1.0
+# or pin the current release
+npm install @onchaindiligence/agent-evidence@0.2.0
 ```
 
 ## Two payment rails

@@ -124,9 +124,9 @@ adapters/APIs) is the next implementation slice.
   mutated-signature `INVALID`, and missing-trust `UNVERIFIABLE` results.
 - Shared immutable vectors prove TypeScript-to-Python verification and Python
   producer byte equality. The Python P1.7 suite and workflow remain intact.
-- Package version is `0.1.0`; protocol version remains v0. The package is
-  publicly available on npm. Future releases will use the prepared GitHub OIDC
-  workflow after the owner configures the npm Trusted Publisher association.
+- Package version is `0.2.0`; protocol version remains v0. The package is
+  publicly available on npm and uses the GitHub OIDC Trusted Publishing
+  workflow for releases.
 
 ## 1. Verified current architecture
 

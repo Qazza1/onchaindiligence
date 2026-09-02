@@ -20,12 +20,11 @@ The focused package therefore has:
 - Node built-in cryptography plus Ajv and `ajv-formats` only;
 - ESM and TypeScript declarations;
 - packaged schemas and conformance vectors;
-- package version `0.1.0`, independent of Agent Evidence protocol v0;
+- package version `0.2.0`, independent of Agent Evidence protocol v0;
 - an external packed-artifact consumer test outside `src`;
 - a caller-controlled signing and trust boundary.
 
-`@onchaindiligence/agent-evidence@0.1.0` is publicly available on npm. Its
-first release was independently installed from the registry and verified
-offline by the clean external consumer. A GitHub OIDC release workflow is
-prepared for future releases, pending the owner-side npm Trusted Publisher
-association.
+`@onchaindiligence/agent-evidence@0.2.0` is publicly available on npm. It adds
+the registry, interoperability, Technocore, and tclk/1 public surfaces while
+retaining caller-controlled offline tri-state verification. Releases use the
+GitHub OIDC Trusted Publishing workflow.

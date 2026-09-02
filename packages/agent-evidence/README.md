@@ -9,15 +9,29 @@ The package is publicly available on npm:
 
 ```sh
 npm install @onchaindiligence/agent-evidence
-# or pin the first release
-npm install @onchaindiligence/agent-evidence@0.1.0
+# or pin this release
+npm install @onchaindiligence/agent-evidence@0.2.0
 ```
 
 This source README reflects the public release. The immutable README embedded
-in the already-published `0.1.0` tarball still carries its pre-release wording;
-the correction will be included in the next package version.
+in the already-published `0.1.0` tarball carried its pre-release wording; this
+release includes the corrected package documentation.
 
 Node.js 20.19 or newer and ESM are required.
+
+## 0.2.0
+
+- Adds strict parsing of generic Agent Evidence signer registries and
+  `TrustPolicy` construction from independently supplied registry metadata.
+- Packages the key-registry JSON Schema, interoperability profile support, and
+  browser/offline-friendly registry types.
+- Adds Technocore signed-message and tclk/1 coordination-evidence adapters.
+
+The verifier remains caller-trust-controlled: embedded bundle keys are never
+trust roots. A Technocore signature proves key possession/authorship of exact
+bytes, not truth; tclk evidence proves coordination, not settlement; and
+PaperRail represents no real value. `VALID`, `INVALID`, and `UNVERIFIABLE`
+semantics are unchanged.
 
 ## What a signature proves
 

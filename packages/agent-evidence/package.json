@@ -1,6 +1,6 @@
 {
   "name": "@onchaindiligence/agent-evidence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Deterministic Agent Evidence v0 construction, DSSE sealing, and offline tri-state verification for Node.js",
   "type": "module",
   "main": "./dist/index.js",
