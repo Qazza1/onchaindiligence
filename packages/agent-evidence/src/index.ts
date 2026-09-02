@@ -40,6 +40,14 @@ export {
   verifyTechnocoreMessage,
 } from './technocore.js'
 export type { TechnocoreEvidenceOptions, TechnocoreSignedMessage } from './technocore.js'
+export { createTclkEvidence, verifyTclkTranscript } from './tclk.js'
+export type {
+  SettlementRailObservation,
+  TclkEvidenceOptions,
+  TclkTranscriptMessage,
+  TclkTranscriptResult,
+  TclkTranscriptStep,
+} from './tclk.js'
 export { validateDocument } from './schema.js'
 export {
   AttestationKey,

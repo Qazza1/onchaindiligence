@@ -125,6 +125,49 @@ fully offline and make no HTTP requests.
 Mandate → Technocore Evidence → Policy → Decision → non-execution → DSSE-sealed
 bundle → offline `VALID` verification.
 
+## tclk/1 (Technocore Lock Protocol) transcript evidence
+
+Signed agent-to-agent deal coordination on [`technocore.chat`](https://github.com/flop-labs/technocore-chat)
+using FLOP Labs' [`@flop-labs/tclk`](https://github.com/flop-labs/tclk) (`offer →
+accept → lock → reveal/refund`) can be captured as Agent Evidence. This adapter
+uses the official `@flop-labs/tclk` package directly — it never reimplements
+frame validation or the state machine, and never uses tclk's unaudited
+PTLC/adaptor-signature path.
+
+```js
+import { verifyTclkTranscript, createTclkEvidence } from '@onchaindiligence/agent-evidence'
+
+// Each entry is a Technocore signed message whose text is a tclk/1 frame line,
+// plus the wall-clock time (ms) at which that frame was applied.
+const transcript = verifyTclkTranscript([
+  { message: offerMsg, atMs }, { message: acceptMsg, atMs }, { message: lockMsg, atMs },
+])
+const evidence = createTclkEvidence(transcript, {
+  runRef: run.id, observedAt, messageEvidenceRefs: [/* one createTechnocoreEvidence(...).id per message */],
+})
+```
+
+`verifyTclkTranscript` verifies, independently, per frame: the Technocore
+transport signature (reusing `verifyTechnocoreMessage`, not a second
+implementation), the tclk frame's own validity, that the frame's `from` matches
+the transport-authenticated DID, and the official state-machine transition. It
+fails closed on a bad signature, a malformed frame, or a sender/DID mismatch; a
+frame the *official* machine itself rejects as a designed-in no-op (a replay, a
+duplicate, an out-of-order transition) is recorded in the result rather than
+treated as fatal, per tclk's own spec.
+
+**Valid signed coordination is evidence of what the agents agreed/asserted. The
+named settlement rail remains authoritative for actual value movement** — a
+`lock` frame is captured as "payer asserted/announced lock on rail X," never as
+"funds were locked," unless the caller separately supplies an independently
+verified `settlementRail` observation (this package implements no rail).
+
+[`examples/tclk-evidence.mjs`](./examples/tclk-evidence.mjs) builds a full
+hash-lock transcript (offer → accept → lock → reveal) between two local test
+identities and turns it into Mandate → tclk Evidence → Policy → Decision
+(`ACCEPT_COORDINATION_EVIDENCE`) → Execution (`NO_REAL_VALUE_SETTLEMENT`, since
+no real rail is wired up) → sealed bundle → offline `VALID` verification.
+
 ## Schemas and interoperability
 
 The npm artifact includes the canonical v0 schemas and public conformance
