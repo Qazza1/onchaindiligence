@@ -1,0 +1,41 @@
+{
+  "receipt_version": "1",
+  "purpose": "One safe, non-value-bearing live rehearsal proving the persistent OnChainDiligence Technocore DID can publish a valid signed tclk/1 (Technocore Lock Protocol, by FLOP Labs) offer frame on the public venue, and that the resulting public record is independently verifiable and capturable as Agent Evidence.",
+  "protocol": {
+    "tclk_wire_version": "tclk/1",
+    "tclk_package": "@flop-labs/tclk",
+    "tclk_package_version": "0.1.0",
+    "settlement_rail": "paper",
+    "rail_note": "PaperRail is the official reference rail and holds no value; this offer never locked, revealed, or moved anything."
+  },
+  "identity": {
+    "did": "did:key:z6MkuvPkXpYqCUZvNdixDqVcRXJp1NP5FvjEJsKNcLYLheVm",
+    "note": "Existing persistent OnChainDiligence Technocore identity, unchanged from the prior Technocore signed-message rehearsal recorded in TECHNOCORE_PUBLIC_RECEIPT.json."
+  },
+  "public_offer": {
+    "room": "tclk-offers",
+    "accepted_sequence": 942,
+    "server_timestamp": "2026-09-02T19:10:17.022524Z",
+    "nonce": "1788376139806",
+    "offer_id": "0x52546bd81ef4a8537bab83b8335150872ea90afae8fa8b33900a4ed55929569f",
+    "text": "tclk1 {\"amount\":\"1\",\"asset\":\"PAPER-REHEARSAL\",\"claimByMs\":1788376739806,\"expiresMs\":1788376439806,\"from\":\"did:key:z6MkuvPkXpYqCUZvNdixDqVcRXJp1NP5FvjEJsKNcLYLheVm\",\"id\":\"0x52546bd81ef4a8537bab83b8335150872ea90afae8fa8b33900a4ed55929569f\",\"job\":{\"id\":\"tclk1-interop-rehearsal-no-value\",\"proto\":\"ocd-rehearsal\"},\"lock\":\"hash\",\"nonce\":\"08e429d01e9f9b85\",\"rails\":[\"paper\"],\"refundAfterMs\":1788377339806,\"role\":\"payer\",\"type\":\"offer\"}",
+    "signature": "JgJJ_WH9cWIRMcBFDgdWPT79eGnjqVrUVuF-b8VG1uQol8fCEg_i7T9UlC-sQjKI1ztxBK0HL1TbpIsPe5nYDw",
+    "post_result": {
+      "http_status": 200,
+      "accepted": true,
+      "note": "Accepted on the first and only POST attempt; no retry was needed."
+    }
+  },
+  "verification": {
+    "ocd_tclk_transcript_status": "proposed",
+    "ocd_tclk_transcript_verification": "the Technocore transport signature, tclk/1 frame validity, sender/DID attribution, and offer-opening state transition all verified via the real onchaindiligence/packages/agent-evidence tclk adapter (verifyTclkTranscript), reading only this public record",
+    "agent_evidence_bundle_state": "VALID",
+    "what_this_proves": "The persistent OnChainDiligence DID signed this exact frame; the frame is a valid tclk/1 offer; it was published to the public tclk-offers rendezvous.",
+    "what_this_does_not_prove": "That funds exist, that any counterparty accepted the offer, or that any settlement occurred. authorized_to_execute is false; execution status is NO_REAL_VALUE_SETTLEMENT."
+  },
+  "disposition": "ACCEPT_COORDINATION_EVIDENCE",
+  "authorized_to_execute": false,
+  "execution_status": "NO_REAL_VALUE_SETTLEMENT",
+  "deal_continuation": "None. Per the rehearsal's own scope, the offer was left to expire naturally (5-minute expiresMs) -- no accept, lock, reveal, refund, or cancel was performed by OnChainDiligence.",
+  "ocd_tclk_adapter_implementation_commit": "10b230fe88f0cb4251e540935484e62ca98be573"
+}
