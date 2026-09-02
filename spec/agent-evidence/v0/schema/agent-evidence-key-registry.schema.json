@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onchaindiligence.com/schemas/agent-evidence/v0/agent-evidence-key-registry.schema.json",
+  "title": "Agent Evidence Interoperability Profile v1 — public signer key registry",
+  "description": "The recommended shape for GET /.well-known/agent-evidence-keys, as defined by docs/AGENT_EVIDENCE_INTEROP.md. This registry is public metadata: an issuer's own signer key_id, public key, and lifecycle -- never a private key. Hosting this endpoint is a discovery convenience only; it does not by itself make an issuer trustworthy, and a verifier's caller-supplied TrustPolicy remains the sole source of trust.",
+  "type": "object",
+  "required": ["schema_version", "issuer", "environment", "keys"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "issuer": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+    "environment": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+    "keys": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/keyEntry" },
+      "maxItems": 256
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "keyEntry": {
+      "type": "object",
+      "title": "One published signer key. key_id alone never establishes trust, and this record is a hint until a caller's TrustPolicy independently trusts it.",
+      "required": ["key_id", "algorithm", "public_key_pem", "valid_from", "valid_until", "revoked_at", "status"],
+      "properties": {
+        "key_id": {
+          "type": "string",
+          "pattern": "^ed25519-[A-Za-z0-9_-]{16}$",
+          "description": "Self-certifying: derived as ed25519-<first 16 base64url chars of sha256(SPKI DER)>, the same convention Agent Evidence's own AttestationKey uses. A verifier SHOULD re-derive and reject a mismatch."
+        },
+        "algorithm": { "const": "Ed25519" },
+        "public_key_pem": {
+          "type": "string",
+          "pattern": "^-----BEGIN PUBLIC KEY-----\\n[A-Za-z0-9+/=\\n]+-----END PUBLIC KEY-----\\n?$",
+          "maxLength": 4096
+        },
+        "valid_from": {
+          "anyOf": [
+            { "$ref": "common.schema.json#/$defs/timestamp" },
+            { "type": "null" }
+          ],
+          "description": "null means no defensible activation boundary is published; a verifier must then treat the key as UNVERIFIABLE, never VALID."
+        },
+        "valid_until": {
+          "anyOf": [
+            { "$ref": "common.schema.json#/$defs/timestamp" },
+            { "type": "null" }
+          ]
+        },
+        "revoked_at": {
+          "anyOf": [
+            { "$ref": "common.schema.json#/$defs/timestamp" },
+            { "type": "null" }
+          ]
+        },
+        "status": { "enum": ["active", "retired", "revoked", "compromised"] }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": { "status": { "enum": ["revoked", "compromised"] } },
+            "required": ["status"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["revoked_at"],
+            "properties": { "revoked_at": { "$ref": "common.schema.json#/$defs/timestamp" } }
+          }
+        }
+      ]
+    }
+  }
+}

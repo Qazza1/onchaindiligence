@@ -1,23 +1,59 @@
 # OnchainDiligence product roadmap
 
-Last updated: 2026-08-30
+Last updated: 2026-09-03
 
-## Current Agent Evidence delivery record
+## SHIPPED
 
-- P1.6: Agent Evidence v0 specification, schemas, and conformance corpus.
-- P1.7: production Python construction and offline verification package.
-- P1.8: real multi-provider production evidence bundle and public proof.
-- P1.9: focused external TypeScript/Node package, packed-artifact and public
-  npm consumer verification, offline tri-state verification, and
-  TypeScript/Python compatibility. `@onchaindiligence/agent-evidence@0.1.0`
-  is publicly available on npm.
+- Agent Evidence v0: specification, JSON Schemas, and conformance corpus
+  (P1.6).
+- Production Python construction and offline verification package (P1.7).
+- Real multi-provider production evidence bundle and public proof, P1.8
+  (`examples/production/p1_8`).
+- Public TypeScript/Node package, packed-artifact and public npm consumer
+  verification, offline tri-state verification, TypeScript/Python
+  compatibility (P1.9). `@onchaindiligence/agent-evidence@0.1.0` is publicly
+  available on npm.
+- Browser-local bundle verification on `onchaindiligence.com/verify` (Live
+  Example, Paste Bundle).
+- Technocore signed-message adapter (`createTechnocoreEvidence`,
+  `verifyTechnocoreMessage`) — a verified `did:key` assertion captured as
+  Agent Evidence with no truth claim.
+- tclk/1 (Technocore Lock Protocol, by FLOP Labs) coordination-evidence
+  adapter (`verifyTclkTranscript`, `createTclkEvidence`), including a
+  completed live, non-value-bearing tclk/1 interoperability rehearsal on the
+  public Technocore network (`docs/TCLK_REHEARSAL_RECEIPT.json`).
+- ArcFX production integration: sealed-bundle browser handoff
+  (`/verify?source=arcfx`), ArcFX's own independent public signer registry
+  consulted for trust, and the key-`id`-spoofing regression closed (trust
+  record's public key is what cryptographic verification uses, never a
+  bundle's self-declared one).
+- Agent Evidence Interoperability Profile v1
+  (`docs/AGENT_EVIDENCE_INTEROP.md`): a generic, versioned public signer
+  discovery convention (`GET /.well-known/agent-evidence-keys`, schema
+  `agent-evidence-key-registry.schema.json`) and reusable SDK APIs
+  (`parseAgentEvidenceKeyRegistry`, `trustPolicyFromKeyRegistry`) generalizing
+  the ArcFX pattern for any issuer, plus a documented browser verifier
+  handoff profile.
+
+## CURRENT
+
+- Agent Evidence Interoperability Profile v1 (above) — recently shipped;
+  watching for the next real integrator before iterating further on it.
+
+## WATCH / FUTURE
+
+- FLOP inference testnet integration, if and when an actual stable public
+  SDK/API and testnet exist (see Phase 2 below — the underlying caution has
+  not changed; FLOP inference integration does not exist today).
+- Additional real agent integrations, driven by external demand rather than
+  built speculatively ahead of it.
 
 > **Superseded for forward implementation on 2026-08-27.** The governing
-> direction is now Agent Evidence and Decision Provenance. Use
+> direction is Agent Evidence and Decision Provenance. Use
 > `docs/PRODUCT_DIRECTION.md`, `docs/AGENT_EVIDENCE_V0.md`,
-> `docs/MIGRATION_PLAN.md`, and `docs/THREAT_MODEL.md`. The phases below are
-> retained only as historical audit context; the FLOP phase is not an active
-> implementation priority.
+> `docs/AGENT_EVIDENCE_INTEROP.md`, `docs/MIGRATION_PLAN.md`, and
+> `docs/THREAT_MODEL.md`. The phases below are retained only as historical
+> audit context; the FLOP phase is not an active implementation priority.
 
 Security and correctness findings in `AUDIT_FINDINGS.md` take precedence over
 new product surface. Compliance features should not multiply until the shared

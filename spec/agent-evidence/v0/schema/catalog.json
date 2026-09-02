@@ -8,13 +8,15 @@
     "proof.schema.json",
     "record.schema.json",
     "bundle-payload.schema.json",
-    "portable-file.schema.json"
+    "portable-file.schema.json",
+    "agent-evidence-key-registry.schema.json"
   ],
   "entry_points": {
     "portable_file": "portable-file.schema.json",
     "signed_payload": "bundle-payload.schema.json",
     "record": "record.schema.json",
     "proof": "proof.schema.json",
-    "trusted_key_record": "attestation-key.schema.json"
+    "trusted_key_record": "attestation-key.schema.json",
+    "agent_evidence_key_registry": "agent-evidence-key-registry.schema.json"
   }
 }

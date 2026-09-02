@@ -12,6 +12,7 @@ export const SCHEMA_NAMES = [
   'record.schema.json',
   'bundle-payload.schema.json',
   'portable-file.schema.json',
+  'agent-evidence-key-registry.schema.json',
 ] as const
 
 interface AjvRuntime {

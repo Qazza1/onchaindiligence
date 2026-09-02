@@ -58,6 +58,12 @@ export {
   TrustPolicy,
 } from './trust.js'
 export type { CreateKeyRecordOptions, TrustPolicyOptions } from './trust.js'
+export { parseAgentEvidenceKeyRegistry, trustPolicyFromKeyRegistry } from './registry.js'
+export type {
+  AgentEvidenceKeyRegistry,
+  AgentEvidenceKeyRegistryEntry,
+  ParseAgentEvidenceKeyRegistryOptions,
+} from './registry.js'
 export { overallState, verifyBundle } from './verifier.js'
 export type {
   AgentEvidenceRecord,

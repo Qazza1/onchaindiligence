@@ -66,7 +66,10 @@ The current compliance API is the first production Evidence Provider. Existing
 wallet sanctions, OFAC name, UK Companies House, SEC EDGAR, diligence, verdict,
 Ed25519 attestation, key publication, browser verification, anchoring, SDK,
 CLI, Action, MCP, investigation, and indexer capabilities are retained where
-they are real and correctly represented.
+they are real and correctly represented. The Agent Evidence Interoperability
+Profile (`docs/AGENT_EVIDENCE_INTEROP.md`) generalizes the working ArcFX
+integration -- public signer discovery and a browser verifier handoff -- into
+conventions any other agent application can implement.
 
 Existing `onchaindiligence.attestation.v2` signatures keep their exact meaning.
 They are not silently reinterpreted as Agent Evidence v0. A v2 envelope can be
