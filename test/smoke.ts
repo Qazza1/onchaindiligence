@@ -595,6 +595,8 @@ await test('signs a response and the signature verifies with the public key', as
   att.__reinit()
 
   assert.strictEqual(att.attestationEnabled(), true)
+  assert.strictEqual(att.attestationSigningReady(new Date('2025-12-31T23:59:59.999Z')), false)
+  assert.strictEqual(att.attestationSigningReady(new Date('2026-01-01T00:00:00.000Z')), true)
   const envelope: any = att.attest({ address: '0xABC', sanctioned: false })
   assert.strictEqual(envelope.attestation.signed, true)
   assert.strictEqual(envelope.attestation.schema_version, att.ATTESTATION_SCHEMA_VERSION)
