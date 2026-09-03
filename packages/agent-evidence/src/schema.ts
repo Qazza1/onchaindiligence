@@ -13,6 +13,7 @@ export const SCHEMA_NAMES = [
   'bundle-payload.schema.json',
   'portable-file.schema.json',
   'agent-evidence-key-registry.schema.json',
+  'public-action-receipt.schema.json',
 ] as const
 
 interface AjvRuntime {

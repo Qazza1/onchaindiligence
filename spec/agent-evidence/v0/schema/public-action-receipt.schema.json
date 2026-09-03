@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onchaindiligence.com/schemas/agent-evidence/v0/public-action-receipt.schema.json",
+  "title": "OnChainDiligence Public Action Receipt v1",
+  "description": "A human-facing, independently verifiable projection of an Agent Evidence run: what action was proposed, what evidence existed, what decision was reached, whether execution and settlement occurred, and what remains unknown. A public receipt is an OPT-IN, redacted view -- it must never contain private mandate text, customer names, raw KYC/KYB evidence, credentials, tokens, or secrets. Decision, Execution, and Settlement are independent statements; none of them implies the others, and none is the same claim as receipt PROOF (whether the signer asserted this exact content).",
+  "type": "object",
+  "required": ["schema", "receipt", "proof"],
+  "properties": {
+    "schema": { "const": "onchaindiligence.public-action-receipt.v1" },
+    "receipt": { "$ref": "#/$defs/receipt" },
+    "proof": { "$ref": "#/$defs/proof" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "receiptId": {
+      "type": "string",
+      "description": "A deterministic, human-friendly LOCATOR derived from receipt_digest (Crockford Base32 of the first 10 digest bytes). It is not itself authoritative -- a resolver must confirm receipt_digest matches before trusting a lookup by this id.",
+      "pattern": "^OCD-RCP-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{4}-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{4}-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{4}-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{4}$"
+    },
+    "receiptAction": {
+      "type": "object",
+      "title": "The proposed or executed action, in public-safe terms.",
+      "required": ["kind", "resource", "network", "asset", "amount", "sender", "recipient"],
+      "properties": {
+        "kind": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "resource": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/nonEmptyString" }, { "type": "null" }]
+        },
+        "network": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/nonEmptyString" }, { "type": "null" }],
+          "description": "CAIP-2 network id where applicable, or null when the action is not chain-scoped or the network was not recorded."
+        },
+        "asset": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/nonEmptyString" }, { "type": "null" }]
+        },
+        "amount": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/decimalString" }, { "type": "null" }]
+        },
+        "sender": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/nonEmptyString" }, { "type": "null" }],
+          "description": "A wallet address, when known. Never a legal/company identity -- an identity binding requires its own evidence and is never inferred here."
+        },
+        "recipient": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/nonEmptyString" }, { "type": "null" }],
+          "description": "A wallet address, when known. Same identity-binding caveat as sender."
+        }
+      },
+      "additionalProperties": false
+    },
+    "receiptDecision": {
+      "type": "object",
+      "title": "The policy/mandate decision. Independent of execution, settlement, and receipt proof.",
+      "required": ["status", "authorized", "reasons"],
+      "properties": {
+        "status": { "enum": ["ALLOW", "REQUIRE_APPROVAL", "BLOCK", "UNKNOWN"] },
+        "authorized": {
+          "type": ["boolean", "null"],
+          "description": "Whether the mandate/policy authorized execution. null only when genuinely unknown -- never a substitute for BLOCK or ALLOW."
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+          "maxItems": 64
+        }
+      },
+      "additionalProperties": false
+    },
+    "receiptExecution": {
+      "type": "object",
+      "title": "Whether the action was actually submitted for execution. A transaction hash present does NOT mean settlement is confirmed -- see receiptSettlement.",
+      "required": ["provider", "status", "transaction_hash", "submitted_at", "confirmed_at"],
+      "properties": {
+        "provider": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/nonEmptyString" }, { "type": "null" }],
+          "description": "The execution provider/rail, e.g. \"x402\" or \"paybox\", when applicable."
+        },
+        "status": { "enum": ["NOT_SUBMITTED", "SUBMITTED", "CONFIRMED", "FAILED", "UNKNOWN"] },
+        "transaction_hash": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/nonEmptyString" }, { "type": "null" }]
+        },
+        "submitted_at": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "confirmed_at": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/timestamp" }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "receiptSettlement": {
+      "type": "object",
+      "title": "Whether value movement was independently confirmed. Distinct from execution: a submitted transaction is not necessarily settled.",
+      "required": ["status", "detail"],
+      "properties": {
+        "status": { "enum": ["CONFIRMED", "NOT_CONFIRMED", "UNVERIFIED", "NOT_APPLICABLE"] },
+        "detail": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/nonEmptyString" }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "receiptCheck": {
+      "type": "object",
+      "required": ["id", "result", "summary", "evidence_digest"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "A stable, kebab-case check identifier, e.g. \"wallet-sanctions-screen\"."
+        },
+        "result": { "enum": ["PASS", "FAIL", "UNKNOWN", "NOT_CHECKED"] },
+        "summary": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "evidence_digest": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/contentId" }, { "type": "null" }],
+          "description": "Digest reference into the (private, or separately published) Agent Evidence graph. Never the evidence content itself."
+        }
+      },
+      "additionalProperties": false
+    },
+    "receiptLinks": {
+      "type": "object",
+      "required": ["agent_evidence_bundle_digest", "preflight_receipt_id"],
+      "properties": {
+        "agent_evidence_bundle_digest": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/contentId" }, { "type": "null" }]
+        },
+        "preflight_receipt_id": {
+          "anyOf": [{ "$ref": "#/$defs/receiptId" }, { "type": "null" }],
+          "description": "For a COMMERCE receipt, the PREFLIGHT receipt it followed, when one exists."
+        }
+      },
+      "additionalProperties": false
+    },
+    "receipt": {
+      "type": "object",
+      "required": [
+        "receipt_id",
+        "receipt_digest",
+        "receipt_type",
+        "issued_at",
+        "action",
+        "decision",
+        "execution",
+        "settlement",
+        "checks",
+        "links",
+        "limitations"
+      ],
+      "properties": {
+        "receipt_id": { "$ref": "#/$defs/receiptId" },
+        "receipt_digest": {
+          "$ref": "common.schema.json#/$defs/contentId",
+          "description": "sha256 over the RFC 8785 canonical JSON of every receipt field EXCEPT receipt_id and receipt_digest themselves -- see docs/PUBLIC_ACTION_RECEIPT_V1.md for the exact algorithm."
+        },
+        "receipt_type": { "enum": ["PREFLIGHT", "COMMERCE", "ACTION"] },
+        "issued_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "action": { "$ref": "#/$defs/receiptAction" },
+        "decision": { "$ref": "#/$defs/receiptDecision" },
+        "execution": { "$ref": "#/$defs/receiptExecution" },
+        "settlement": { "$ref": "#/$defs/receiptSettlement" },
+        "checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/receiptCheck" },
+          "maxItems": 128
+        },
+        "links": { "$ref": "#/$defs/receiptLinks" },
+        "limitations": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+          "maxItems": 64
+        }
+      },
+      "additionalProperties": false
+    },
+    "proof": {
+      "type": "object",
+      "title": "onchaindiligence.attestation.v2 signature over the exact receipt object above -- the same signing scheme and key/lifecycle registry already used across the product. Signature means the signer asserted this exact receipt content, nothing about the underlying facts' objective truth.",
+      "required": ["signed", "schema_version", "issuer", "purpose", "issued_at", "key_id", "algorithm", "signature"],
+      "properties": {
+        "signed": { "const": true },
+        "schema_version": { "const": "onchaindiligence.attestation.v2" },
+        "issuer": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "purpose": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "issued_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "key_id": { "type": "string", "pattern": "^ed25519-[A-Za-z0-9_-]{16}$" },
+        "algorithm": { "const": "ed25519" },
+        "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -64,6 +64,40 @@ export type {
   AgentEvidenceKeyRegistryEntry,
   ParseAgentEvidenceKeyRegistryOptions,
 } from './registry.js'
+export { verifyAttestationV2 } from './attestationV2.js'
+export type {
+  AttestationV2Fields,
+  AttestationV2VerifyOptions,
+  AttestationV2VerifyResult,
+} from './attestationV2.js'
+export { formatReceiptId, isValidReceiptIdFormat, normalizeReceiptId } from './receiptId.js'
+export {
+  buildReceiptCore,
+  computeReceiptDigest,
+  finalizeReceiptCore,
+  receiptAttestationSigningInput,
+  verifyReceiptEnvelope,
+  PUBLIC_ACTION_RECEIPT_ISSUER,
+  PUBLIC_ACTION_RECEIPT_PURPOSE,
+  PUBLIC_ACTION_RECEIPT_SCHEMA,
+} from './receipts.js'
+export type {
+  CheckResult,
+  DecisionStatus,
+  ExecutionStatus,
+  PublicActionReceiptEnvelope,
+  Receipt,
+  ReceiptAction,
+  ReceiptCheck,
+  ReceiptCoreFields,
+  ReceiptDecision,
+  ReceiptExecution,
+  ReceiptLinks,
+  ReceiptSettlement,
+  ReceiptType,
+  ReceiptVerificationResult,
+  SettlementStatus,
+} from './receipts.js'
 export { overallState, verifyBundle } from './verifier.js'
 export type {
   AgentEvidenceRecord,

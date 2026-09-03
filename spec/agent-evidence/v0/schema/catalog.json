@@ -9,7 +9,8 @@
     "record.schema.json",
     "bundle-payload.schema.json",
     "portable-file.schema.json",
-    "agent-evidence-key-registry.schema.json"
+    "agent-evidence-key-registry.schema.json",
+    "public-action-receipt.schema.json"
   ],
   "entry_points": {
     "portable_file": "portable-file.schema.json",
@@ -17,6 +18,7 @@
     "record": "record.schema.json",
     "proof": "proof.schema.json",
     "trusted_key_record": "attestation-key.schema.json",
-    "agent_evidence_key_registry": "agent-evidence-key-registry.schema.json"
+    "agent_evidence_key_registry": "agent-evidence-key-registry.schema.json",
+    "public_action_receipt": "public-action-receipt.schema.json"
   }
 }
