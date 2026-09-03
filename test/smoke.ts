@@ -894,6 +894,45 @@ await test('/anchor accepts an authentic envelope into the payment gate', async 
   assert.strictEqual(response.status, 402)
 })
 
+const attestAuthHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.ATTESTATION_SERVICE_TOKEN}` }
+
+await test('POST /attest with no purpose defaults to ATTESTATION_PURPOSE (unchanged existing behaviour)', async () => {
+  const response = await routeApp.request('/attest', {
+    method: 'POST',
+    headers: attestAuthHeaders,
+    body: JSON.stringify({ evidence: { sanctioned: false } }),
+  })
+  assert.strictEqual(response.status, 200)
+  const signed: any = await response.json()
+  assert.strictEqual(signed.attestation.purpose, att.ATTESTATION_PURPOSE)
+})
+
+await test('POST /attest accepts an allowlisted purpose override for D2.0A receipt signing', async () => {
+  const response = await routeApp.request('/attest', {
+    method: 'POST',
+    headers: attestAuthHeaders,
+    body: JSON.stringify({ evidence: { receipt_id: 'OCD-RCP-0000-0000-0000-0000' }, purpose: att.ATTESTATION_RECEIPT_PURPOSE }),
+  })
+  assert.strictEqual(response.status, 200)
+  const signed: any = await response.json()
+  assert.strictEqual(signed.attestation.signed, true)
+  assert.strictEqual(signed.attestation.purpose, att.ATTESTATION_RECEIPT_PURPOSE)
+  assert.strictEqual(
+    att.verifyAttestationForAnchoring(signed).valid,
+    false,
+    'a receipt-purpose attestation must never itself pass as an anchorable compliance-screening-result envelope'
+  )
+})
+
+await test('POST /attest rejects a non-allowlisted, caller-declared purpose', async () => {
+  const response = await routeApp.request('/attest', {
+    method: 'POST',
+    headers: attestAuthHeaders,
+    body: JSON.stringify({ evidence: { anything: true }, purpose: 'whatever-i-feel-like-claiming' }),
+  })
+  assert.strictEqual(response.status, 400)
+})
+
 console.log(`\n${passed} passed, ${failed} failed`)
 
 global.fetch = originalFetch

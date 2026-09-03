@@ -52,6 +52,10 @@ export const ATTESTATION_SCHEMA_VERSION = 'onchaindiligence.attestation.v2'
 export const ATTESTATION_ISSUER = 'https://api.onchaindiligence.com'
 export const ATTESTATION_PURPOSE = 'compliance-screening-result'
 export const ATTESTATION_FIXTURE_PURPOSE = 'verification-fixture'
+// D2.0A: Public Action Receipt v1 (packages/agent-evidence's receipts.ts)
+// signs its receipts through this same endpoint/scheme with this purpose —
+// see docs/PUBLIC_ACTION_RECEIPT_V1.md in the onchaindiligence repo.
+export const ATTESTATION_RECEIPT_PURPOSE = 'public-action-receipt'
 
 let privateKey: KeyObject | null = null
 let publicKeyPem: string | null = null
@@ -339,7 +343,12 @@ export function verifyAttestationForAnchoring(
  */
 export function attest<T extends Record<string, unknown>>(
   data: T,
-  options: { purpose?: typeof ATTESTATION_PURPOSE | typeof ATTESTATION_FIXTURE_PURPOSE } = {}
+  options: {
+    purpose?:
+      | typeof ATTESTATION_PURPOSE
+      | typeof ATTESTATION_FIXTURE_PURPOSE
+      | typeof ATTESTATION_RECEIPT_PURPOSE
+  } = {}
 ): Record<string, unknown> {
   const issuedAt = new Date().toISOString()
   const normalizedData = normalizeJson(data)

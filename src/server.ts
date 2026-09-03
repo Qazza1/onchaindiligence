@@ -47,6 +47,7 @@ import {
   ATTESTATION_SCHEMA_VERSION,
   ATTESTATION_PURPOSE,
   ATTESTATION_FIXTURE_PURPOSE,
+  ATTESTATION_RECEIPT_PURPOSE,
   verifyAttestationForAnchoring,
   type VerifiedAttestationForAnchoring,
 } from './attestation.js'
@@ -918,7 +919,18 @@ app.post('/attest', rateLimit, requireInternalAttestationAuth, async (c) => {
   if (JSON.stringify(evidence).length > 200_000) {
     return c.json({ error: 'evidence payload too large (max ~200KB)' }, 413)
   }
-  const signed = attest(evidence as Record<string, unknown>)
+  // Optional purpose override, strictly allowlisted: a caller can never make
+  // this endpoint sign under an arbitrary self-declared purpose string.
+  // Omitted -> unchanged default behaviour (ATTESTATION_PURPOSE).
+  const rawPurpose = (body as Record<string, unknown>)?.purpose
+  if (rawPurpose !== undefined) {
+    const allowedPurposes: unknown[] = [ATTESTATION_PURPOSE, ATTESTATION_RECEIPT_PURPOSE]
+    if (!allowedPurposes.includes(rawPurpose)) {
+      return c.json({ error: `purpose must be one of: ${allowedPurposes.join(', ')}` }, 400)
+    }
+  }
+  const purpose = rawPurpose as typeof ATTESTATION_PURPOSE | typeof ATTESTATION_RECEIPT_PURPOSE | undefined
+  const signed = attest(evidence as Record<string, unknown>, purpose ? { purpose } : {})
   return c.json(signed, 200)
 })
 
