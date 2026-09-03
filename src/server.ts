@@ -38,6 +38,7 @@ import { logPaymentSuccess, logPaymentFailed } from './paymentLog.js'
 import {
   attest,
   attestationEnabled,
+  attestationSigningReady,
   getPublicKeyPem,
   getKeyId,
   getAttestationKeyRecords,
@@ -852,8 +853,8 @@ app.get(
 // backend that reconstructs evidence from authoritative stored records.
 // ---------------------------------------------------------------------
 app.get('/attest/ready', rateLimit, requireInternalAttestationAuth, (c) => {
-  if (!attestationEnabled()) {
-    return c.json({ ready: false, error: 'attestation is not configured' }, 503)
+  if (!attestationEnabled() || !attestationSigningReady()) {
+    return c.json({ ready: false, error: 'attestation signer is not active' }, 503)
   }
   return c.json({ ready: true, key_id: getKeyId(), algorithm: 'ed25519' })
 })
@@ -867,8 +868,8 @@ app.get(
   rateLimit,
   requireInternalAttestationAuth,
   async (c) => {
-    if (!attestationEnabled()) {
-      return c.json({ ready: false, error: 'attestation is not configured' }, 503)
+    if (!attestationEnabled() || !attestationSigningReady()) {
+      return c.json({ ready: false, error: 'attestation signer is not active' }, 503)
     }
     if (!(await chainalysisHealthy())) {
       return c.json({ ready: false, error: 'sanctions provider unavailable' }, 503)
@@ -887,8 +888,8 @@ app.get(
   validateAddressOrEns,
   healthGate(chainalysisHealthy, 'Chainalysis'),
   async (c) => {
-    if (!attestationEnabled()) {
-      return c.json({ error: 'attestation is not configured on this deployment' }, 503)
+    if (!attestationEnabled() || !attestationSigningReady()) {
+      return c.json({ error: 'attestation signer is not active' }, 503)
     }
     try {
       return c.json(attest(await evaluateVerdict(c.req.param('address'))))
@@ -900,9 +901,9 @@ app.get(
 )
 
 app.post('/attest', rateLimit, requireInternalAttestationAuth, async (c) => {
-  if (!attestationEnabled()) {
+  if (!attestationEnabled() || !attestationSigningReady()) {
     return c.json(
-      { error: 'attestation is not configured on this deployment' },
+      { error: 'attestation signer is not active' },
       503
     )
   }
@@ -1069,7 +1070,7 @@ discovery(app, mppx, {
 // Publishing the public key is safe and is the whole point of signing.
 // ---------------------------------------------------------------------
 app.get('/.well-known/attestation-key', (c) => {
-  if (!attestationEnabled()) {
+  if (!attestationEnabled() || !attestationSigningReady()) {
     return c.json(
       {
         enabled: false,

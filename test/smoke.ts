@@ -617,9 +617,12 @@ await test('signs a response and the signature verifies with the public key', as
   assert.strictEqual(ok, true)
 
   const records = att.getAttestationKeyRecords()
-  assert.strictEqual(records.length, 1)
-  assert.strictEqual(records[0].key_id, envelope.attestation.key_id)
-  assert.strictEqual(records[0].status, 'active')
+  assert.strictEqual(records.length, 2)
+  const activeRecord = records.find((record) => record.key_id === envelope.attestation.key_id)
+  const historicalRecord = records.find((record) => record.key_id === 'ed25519-D8wfc7civVNG05Ds')
+  assert.strictEqual(activeRecord?.status, 'active')
+  assert.strictEqual(historicalRecord?.status, 'retired')
+  assert.strictEqual(historicalRecord?.valid_from, null)
   assert.strictEqual(att.getAttestationKeyRecord(envelope.attestation.key_id)?.public_key_pem, att.getPublicKeyPem())
 })
 

@@ -108,6 +108,21 @@ export function attestationEnabled(): boolean {
   return privateKey !== null
 }
 
+/**
+ * Whether the configured signer may issue attestations at this instant.
+ * A configured key without an exact lifecycle activation boundary is visible
+ * in the public registry but must never issue a v2 attestation as though it
+ * were lifecycle-verifiable. This also lets a deployment be live before a
+ * scheduled handover without producing pre-boundary signatures.
+ */
+export function attestationSigningReady(now = new Date()): boolean {
+  if (!privateKey || !keyId) return false
+  const activation = process.env.ATTESTATION_KEY_ACTIVATED_AT
+  if (!activation) return false
+  const activationMs = Date.parse(activation)
+  return Number.isFinite(activationMs) && new Date(activationMs).toISOString() === activation && now.getTime() >= activationMs
+}
+
 export function getPublicKeyPem(): string | null {
   return publicKeyPem
 }
@@ -365,6 +380,10 @@ export function attest<T extends Record<string, unknown>>(
           'Response is unsigned and should not be treated as verifiable evidence.',
       },
     }
+  }
+
+  if (!attestationSigningReady(new Date(issuedAt))) {
+    throw new Error('attestation signer is not active at the current lifecycle boundary')
   }
 
   const signingInput = buildAttestationSigningInput(normalizedData, issuedAt, keyId, purpose)

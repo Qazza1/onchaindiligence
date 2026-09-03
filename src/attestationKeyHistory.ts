@@ -134,8 +134,22 @@ export function validateAttestationKeyRegistry(
 }
 
 const historicalAttestationKeys: AttestationKeyRecord[] = [
-  // Add retired/compromised/revoked public records here. Never edit or delete
-  // a record after publication; append a new lifecycle event instead.
+  {
+    key_id: 'ed25519-D8wfc7civVNG05Ds',
+    algorithm: 'ed25519',
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAfnv7489CJ2vQLMYimr8Ot9g/8ZFYbs3dH5M5tDFBV+w=\n-----END PUBLIC KEY-----\n',
+    status: 'retired',
+    // This key pre-dates the authoritative lifecycle record. Its activation
+    // remains unknown by design and is never reconstructed from observations.
+    valid_from: null,
+    valid_until: '2026-09-03T19:50:00.000Z',
+    status_changed_at: '2026-09-03T19:50:00.000Z',
+    // The replacement is supplied by the production rotation configuration so
+    // tests using an ephemeral signer do not misrepresent that signer as a
+    // production successor. Production deploys must set this exact public ID.
+    replacement_key_id: process.env.ATTESTATION_ROTATION_REPLACEMENT_KEY_ID ?? null,
+    compromised_at: null,
+  },
 ]
 
 export const HISTORICAL_ATTESTATION_KEYS: readonly Readonly<AttestationKeyRecord>[] = Object.freeze(
