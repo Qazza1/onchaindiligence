@@ -175,7 +175,7 @@
     "proof": {
       "type": "object",
       "title": "onchaindiligence.attestation.v2 signature over the exact receipt object above -- the same signing scheme and key/lifecycle registry already used across the product. Signature means the signer asserted this exact receipt content, nothing about the underlying facts' objective truth.",
-      "required": ["signed", "schema_version", "issuer", "purpose", "issued_at", "key_id", "algorithm", "signature"],
+      "required": ["signed", "schema_version", "issuer", "purpose", "issued_at", "key_id", "algorithm", "canonicalization", "signature"],
       "properties": {
         "signed": { "const": true },
         "schema_version": { "const": "onchaindiligence.attestation.v2" },
@@ -184,6 +184,7 @@
         "issued_at": { "$ref": "common.schema.json#/$defs/timestamp" },
         "key_id": { "type": "string", "pattern": "^ed25519-[A-Za-z0-9_-]{16}$" },
         "algorithm": { "const": "ed25519" },
+        "canonicalization": { "const": "RFC8785" },
         "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" }
       },
       "additionalProperties": false

@@ -55,7 +55,10 @@
       "then": {
         "type": "object",
         "properties": {
-          "valid_from": { "$ref": "common.schema.json#/$defs/timestamp" },
+          "valid_from": {
+            "anyOf": [{ "$ref": "common.schema.json#/$defs/timestamp" }, { "type": "null" }],
+            "description": "May be null for a key that pre-dates authoritative lifecycle tracking -- that uncertainty is intentional and must never be invented; evaluateKeyLifecycle treats it as UNVERIFIABLE, never VALID."
+          },
           "valid_until": { "$ref": "common.schema.json#/$defs/timestamp" },
           "status_changed_at": { "$ref": "common.schema.json#/$defs/timestamp" }
         }

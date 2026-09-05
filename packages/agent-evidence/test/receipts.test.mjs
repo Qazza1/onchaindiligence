@@ -52,7 +52,7 @@ async function sealForTest(receipt, { issuedAt = '2026-09-04T11:00:01.000Z', pur
   const signature = ed25519Sign(null, Buffer.from(signingInput), keyPair.privateKey).toString('base64url')
   const proof = {
     signed: true, schema_version: 'onchaindiligence.attestation.v2', issuer, purpose,
-    issued_at: issuedAt, key_id: keyRecord.key_id, algorithm: 'ed25519', signature,
+    issued_at: issuedAt, key_id: keyRecord.key_id, algorithm: 'ed25519', canonicalization: 'RFC8785', signature,
   }
   return { envelope: { schema: PUBLIC_ACTION_RECEIPT_SCHEMA, receipt, proof }, keyRecord }
 }
