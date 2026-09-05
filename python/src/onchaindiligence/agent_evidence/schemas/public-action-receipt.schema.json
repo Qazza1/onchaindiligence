@@ -185,7 +185,8 @@
         "key_id": { "type": "string", "pattern": "^ed25519-[A-Za-z0-9_-]{16}$" },
         "algorithm": { "const": "ed25519" },
         "canonicalization": { "const": "RFC8785" },
-        "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" }
+        "signature": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$" },
+        "signing_input_hint": { "type": "string", "maxLength": 4096 }
       },
       "additionalProperties": false
     }
