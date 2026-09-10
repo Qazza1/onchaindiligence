@@ -1,6 +1,6 @@
 # OnchainDiligence product roadmap
 
-Last updated: 2026-09-03
+Last updated: 2026-09-10
 
 ## SHIPPED
 
@@ -39,6 +39,12 @@ Last updated: 2026-09-03
 
 - Agent Evidence Interoperability Profile v1 (above) — recently shipped;
   watching for the next real integrator before iterating further on it.
+- FLOP-A OnChainDiligence Technocore Participation — **ACTIVE**:
+  one persistent dedicated DID, one signed introduction, one durable
+  technical contribution, and one same-DID public contribution proof. This is
+  bounded ecosystem participation, not token-eligibility activity.
+- D3.4A First-Pilot Activation Path — **ACTIVE**. FLOP-A does not replace the
+  customer-validation path.
 
 ## WATCH / FUTURE
 
