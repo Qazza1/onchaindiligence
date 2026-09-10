@@ -39,10 +39,12 @@ Last updated: 2026-09-10
 
 - Agent Evidence Interoperability Profile v1 (above) — recently shipped;
   watching for the next real integrator before iterating further on it.
-- FLOP-A OnChainDiligence Technocore Participation — **ACTIVE**:
+- FLOP-A OnChainDiligence Technocore Participation — **COMPLETE**:
   one persistent dedicated DID, one signed introduction, one durable
-  technical contribution, and one same-DID public contribution proof. This is
-  bounded ecosystem participation, not token-eligibility activity.
+  technical contribution, and one same-DID public contribution proof
+  (`docs/TECHNOCORE_PARTICIPATION.json`). This was bounded ecosystem
+  participation, not token-eligibility activity. Wait for real official FLOP
+  testnet/faucet instructions before considering any further FLOP work.
 - D3.4A First-Pilot Activation Path — **ACTIVE**. FLOP-A does not replace the
   customer-validation path.
 
