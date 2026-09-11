@@ -370,8 +370,6 @@ export function attest<T extends Record<string, unknown>>(
       | typeof ATTESTATION_RECEIPT_PURPOSE
       | typeof ATTESTATION_ALLOWANCE_PURPOSE
       | typeof ATTESTATION_SWAP_ACTION_PURPOSE
-      | typeof ATTESTATION_SWAP_ACTION_PURPOSE
->>>>>>> feat/d36b-swap-attestation
   } = {}
 ): Record<string, unknown> {
   const issuedAt = new Date().toISOString()
