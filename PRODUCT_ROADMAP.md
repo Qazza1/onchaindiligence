@@ -72,6 +72,14 @@ Last updated: 2026-09-10
   change payment receipts, payment binding vocabulary, or wallet authority.
   The portable artifacts are not yet stored in the payment-only operation
   ledger; callers retain them.
+- D3.6B Token Swaps — **COMPLETE / LIVE**: a separately-versioned, strict
+  Base canonical-USDC-to-Base-WETH direct Uniswap V3 `SwapRouter02`
+  `exactInputSingle` profile. It freezes payer, beneficiary, maximum input,
+  minimum output, router, and policy; independently decodes direct calldata
+  and matching ERC-20 transfer logs under Base safe-head finality. Multicall,
+  aggregators, multi-hop routes, native-asset boundaries, and ambiguous
+  transfer sets are evidence gaps/unsupported shapes, never inferred. It
+  remains distinct from payment receipts and payment binding vocabulary.
 - Agent Evidence Interoperability Profile v1 (above) — recently shipped;
   watching for the next real integrator before iterating further on it.
 - FLOP-A OnChainDiligence Technocore Participation — **COMPLETE**:
