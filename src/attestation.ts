@@ -59,6 +59,8 @@ export const ATTESTATION_RECEIPT_PURPOSE = 'public-action-receipt'
 // D3.6A: separate from Public Action Receipt v1 because ERC-20 allowance
 // intent/spender semantics cannot truthfully be encoded as a payment receipt.
 export const ATTESTATION_ALLOWANCE_PURPOSE = 'erc20-allowance-action'
+/** D3.6B portable direct-swap authorization/observation artifacts only. */
+export const ATTESTATION_SWAP_ACTION_PURPOSE = 'swap-action'
 
 let privateKey: KeyObject | null = null
 let publicKeyPem: string | null = null
@@ -367,6 +369,9 @@ export function attest<T extends Record<string, unknown>>(
       | typeof ATTESTATION_FIXTURE_PURPOSE
       | typeof ATTESTATION_RECEIPT_PURPOSE
       | typeof ATTESTATION_ALLOWANCE_PURPOSE
+      | typeof ATTESTATION_SWAP_ACTION_PURPOSE
+      | typeof ATTESTATION_SWAP_ACTION_PURPOSE
+>>>>>>> feat/d36b-swap-attestation
   } = {}
 ): Record<string, unknown> {
   const issuedAt = new Date().toISOString()
