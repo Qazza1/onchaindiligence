@@ -37,6 +37,14 @@ Last updated: 2026-09-10
 
 ## CURRENT
 
+- D3.5C1 Ethereum Mainnet canonical USDC settlement observation —
+  **COMPLETE / LIVE**: `eip155:1` canonical Circle USDC is independently
+  decoded from transaction receipts under the
+  `ethereum-usdc-finalized-head.v1` policy. Production is configured with an
+  Ethereum RPC endpoint; a historical canonical-USDC transfer was observed
+  with its recipient and amount decoded and its finality confirmed from the
+  native Ethereum `finalized` head. This extends the existing Base support;
+  it does not alter payment, receipt, or binding semantics.
 - Agent Evidence Interoperability Profile v1 (above) — recently shipped;
   watching for the next real integrator before iterating further on it.
 - FLOP-A OnChainDiligence Technocore Participation — **COMPLETE**:
