@@ -37,6 +37,9 @@ Last updated: 2026-09-10
 
 ## CURRENT
 
+- D3.4C1 x402, D3.4C2 PayBox, D3.4C3 Turnkey, and D3.4C4 Crossmint provider
+  evidence — **COMPLETE / LIVE**. D3.4C5 Coinbase/CDP remains **ACTIVE** in
+  its separate provider-adapter workstream.
 - D3.5C1 Ethereum Mainnet canonical USDC settlement observation —
   **COMPLETE / LIVE**: `eip155:1` canonical Circle USDC is independently
   decoded from transaction receipts under the
@@ -52,16 +55,23 @@ Last updated: 2026-09-10
   or a confirmation count is never substituted for finality. Existing D3.3
   reconciliation and binding semantics apply unchanged.
 - D3.5C3 Circle Arc settlement observation — **PLANNED**.
-- D3.5C4 Solana settlement observation — **SHIPPED / AWAITING PRODUCTION
-  RPC CONFIGURATION**: `solana:mainnet` canonical Circle USDC SPL transfers
+- D3.5C4 Solana settlement observation — **COMPLETE / LIVE**:
+  `solana:mainnet` canonical Circle USDC SPL transfers
   are decoded from `jsonParsed` transactions at Solana's native `finalized`
   commitment under `solana-usdc-finalized.v1`. The observer resolves source
   and destination token-account owners instead of treating token accounts as
   wallets, supports top-level and inner SPL Token Program transfers, and
   remains separate from the EVM registry. Existing D3.3 findings and binding
   semantics apply unchanged; this initial transfer profile cannot claim
-  `PAYMENT_IDENTITY_LINKED`. Production intentionally fails closed until
-  `SOLANA_RPC_URL` is configured.
+  `PAYMENT_IDENTITY_LINKED`.
+- D3.6A ERC-20 Allowance / Revocation — **COMPLETE / LIVE**: strict,
+  separately-versioned Base canonical-USDC allowance artifacts cover policy
+  preflight, explicit uint256-max handling, `approve(spender, 0)` revocation,
+  independent `Approval` event observation, Base safe-head finality, and an
+  optional historical allowance read at the target block. This does not
+  change payment receipts, payment binding vocabulary, or wallet authority.
+  The portable artifacts are not yet stored in the payment-only operation
+  ledger; callers retain them.
 - Agent Evidence Interoperability Profile v1 (above) — recently shipped;
   watching for the next real integrator before iterating further on it.
 - FLOP-A OnChainDiligence Technocore Participation — **COMPLETE**:
