@@ -56,6 +56,8 @@ export const ATTESTATION_FIXTURE_PURPOSE = 'verification-fixture'
 // signs its receipts through this same endpoint/scheme with this purpose —
 // see docs/PUBLIC_ACTION_RECEIPT_V1.md in the onchaindiligence repo.
 export const ATTESTATION_RECEIPT_PURPOSE = 'public-action-receipt'
+/** D3.6B portable direct-swap authorization/observation artifacts only. */
+export const ATTESTATION_SWAP_ACTION_PURPOSE = 'swap-action'
 
 let privateKey: KeyObject | null = null
 let publicKeyPem: string | null = null
@@ -363,6 +365,7 @@ export function attest<T extends Record<string, unknown>>(
       | typeof ATTESTATION_PURPOSE
       | typeof ATTESTATION_FIXTURE_PURPOSE
       | typeof ATTESTATION_RECEIPT_PURPOSE
+      | typeof ATTESTATION_SWAP_ACTION_PURPOSE
   } = {}
 ): Record<string, unknown> {
   const issuedAt = new Date().toISOString()
