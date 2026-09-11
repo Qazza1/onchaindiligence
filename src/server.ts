@@ -49,6 +49,7 @@ import {
   ATTESTATION_PURPOSE,
   ATTESTATION_FIXTURE_PURPOSE,
   ATTESTATION_RECEIPT_PURPOSE,
+  ATTESTATION_ALLOWANCE_PURPOSE,
   verifyAttestationForAnchoring,
   type VerifiedAttestationForAnchoring,
 } from './attestation.js'
@@ -925,12 +926,12 @@ app.post('/attest', rateLimit, requireInternalAttestationAuth, async (c) => {
   // Omitted -> unchanged default behaviour (ATTESTATION_PURPOSE).
   const rawPurpose = (body as Record<string, unknown>)?.purpose
   if (rawPurpose !== undefined) {
-    const allowedPurposes: unknown[] = [ATTESTATION_PURPOSE, ATTESTATION_RECEIPT_PURPOSE]
+    const allowedPurposes: unknown[] = [ATTESTATION_PURPOSE, ATTESTATION_RECEIPT_PURPOSE, ATTESTATION_ALLOWANCE_PURPOSE]
     if (!allowedPurposes.includes(rawPurpose)) {
       return c.json({ error: `purpose must be one of: ${allowedPurposes.join(', ')}` }, 400)
     }
   }
-  const purpose = rawPurpose as typeof ATTESTATION_PURPOSE | typeof ATTESTATION_RECEIPT_PURPOSE | undefined
+  const purpose = rawPurpose as typeof ATTESTATION_PURPOSE | typeof ATTESTATION_RECEIPT_PURPOSE | typeof ATTESTATION_ALLOWANCE_PURPOSE | undefined
   const signed = attest(evidence as Record<string, unknown>, purpose ? { purpose } : {})
   return c.json(signed, 200)
 })

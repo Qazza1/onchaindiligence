@@ -56,6 +56,9 @@ export const ATTESTATION_FIXTURE_PURPOSE = 'verification-fixture'
 // signs its receipts through this same endpoint/scheme with this purpose —
 // see docs/PUBLIC_ACTION_RECEIPT_V1.md in the onchaindiligence repo.
 export const ATTESTATION_RECEIPT_PURPOSE = 'public-action-receipt'
+// D3.6A: separate from Public Action Receipt v1 because ERC-20 allowance
+// intent/spender semantics cannot truthfully be encoded as a payment receipt.
+export const ATTESTATION_ALLOWANCE_PURPOSE = 'erc20-allowance-action'
 
 let privateKey: KeyObject | null = null
 let publicKeyPem: string | null = null
@@ -363,6 +366,7 @@ export function attest<T extends Record<string, unknown>>(
       | typeof ATTESTATION_PURPOSE
       | typeof ATTESTATION_FIXTURE_PURPOSE
       | typeof ATTESTATION_RECEIPT_PURPOSE
+      | typeof ATTESTATION_ALLOWANCE_PURPOSE
   } = {}
 ): Record<string, unknown> {
   const issuedAt = new Date().toISOString()
