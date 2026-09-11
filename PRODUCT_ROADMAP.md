@@ -45,6 +45,14 @@ Last updated: 2026-09-10
   with its recipient and amount decoded and its finality confirmed from the
   native Ethereum `finalized` head. This extends the existing Base support;
   it does not alter payment, receipt, or binding semantics.
+- D3.5C2 Tempo Mainnet settlement observation — **COMPLETE / LIVE**:
+  `eip155:4217` Tempo `pathUSD` TIP-20 transfers are independently decoded
+  from standard `Transfer` logs under the `tempo-tip20-finalized-head.v1`
+  policy. Tempo's native `finalized` head is the evidentiary basis; inclusion
+  or a confirmation count is never substituted for finality. Existing D3.3
+  reconciliation and binding semantics apply unchanged.
+- D3.5C3 Circle Arc settlement observation — **PLANNED**.
+- D3.5C4 Solana settlement observation — **PLANNED**.
 - Agent Evidence Interoperability Profile v1 (above) — recently shipped;
   watching for the next real integrator before iterating further on it.
 - FLOP-A OnChainDiligence Technocore Participation — **COMPLETE**:
