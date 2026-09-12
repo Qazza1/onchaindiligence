@@ -68,17 +68,32 @@ const REGISTRY_ABI = [
 ] as const
 
 const tempoChain = {
-  id: config.anchor.chainId,
+  // Only ever dereferenced via getPublicClient/getWalletClient, both gated
+  // behind anchoringEnabled() (which requires chainId !== null) -- this
+  // fallback is type-satisfying only, never functionally reached.
+  id: config.anchor.chainId ?? 0,
   name: 'Tempo',
   nativeCurrency: { name: 'pathUSD', symbol: 'USD', decimals: 6 },
   rpcUrls: { default: { http: [config.anchor.rpcUrl] } },
 } as const
 
+/**
+ * Human-readable Tempo network label for the currently configured chainId,
+ * so callers and docs never have to guess mainnet vs testnet from silence.
+ * Chain ids per Tempo's own docs: 4217 = mainnet, 42431 = Moderato testnet.
+ */
+export function tempoNetworkLabel(): 'mainnet' | 'moderato-testnet' | 'unknown' {
+  if (config.anchor.chainId === 4217) return 'mainnet'
+  if (config.anchor.chainId === 42431) return 'moderato-testnet'
+  return 'unknown'
+}
+
 export function anchoringEnabled(): boolean {
   return Boolean(
     config.anchor.contractAddress &&
       config.anchor.privateKey &&
-      config.anchor.rpcUrl
+      config.anchor.rpcUrl &&
+      config.anchor.chainId !== null
   )
 }
 

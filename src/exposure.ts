@@ -83,7 +83,16 @@ async function fetchRecentCounterparties(
     throw new Error(`Tempo transfer lookup failed (status ${res.status})`)
   }
   const json = (await res.json()) as { data?: Array<Record<string, unknown>> }
-  const rows = Array.isArray(json.data) ? json.data : []
+  // A 200 response with a missing or non-array `data` is an upstream schema
+  // failure, not "no transfers" -- silently treating it as [] would make
+  // counterparties_found=0 look identical to a genuinely clean scan and could
+  // sign a PASS for a subject we never actually evaluated. Only a literal
+  // `data: []` is a legitimate empty result; anything else throws into the
+  // existing `status: 'failed'` / WARN path below.
+  if (!Array.isArray(json.data)) {
+    throw new Error('Tempo transfer lookup returned an unexpected response shape (no data array)')
+  }
+  const rows = json.data
 
   const subject = address.toLowerCase()
   const set = new Set<string>()

@@ -114,9 +114,17 @@ export const config = {
   // --- On-chain attestation anchoring (Tempo) ----------------------------
   // Optional. When configured, attestation hashes can be anchored on Tempo for
   // independent, tamper-evident proof. Anchoring never blocks a paid check.
+  //
+  // No network default: ANCHOR_RPC_URL/ANCHOR_CHAIN_ID previously defaulted
+  // to Moderato testnet even when a real ANCHOR_CONTRACT_ADDRESS/
+  // ANCHOR_PRIVATE_KEY were configured for mainnet -- a deployment that set
+  // only the contract/key (easy to do, since anchoringEnabled() only checked
+  // those two) would silently anchor against the wrong network instead of
+  // failing loudly. All four must now be explicit together; leaving any of
+  // them unset disables anchoring entirely rather than guessing a network.
   anchor: {
-    rpcUrl: process.env.ANCHOR_RPC_URL || 'https://rpc.moderato.tempo.xyz',
-    chainId: Number(process.env.ANCHOR_CHAIN_ID || '42431'), // Moderato testnet
+    rpcUrl: (process.env.ANCHOR_RPC_URL || '') as string,
+    chainId: process.env.ANCHOR_CHAIN_ID ? Number(process.env.ANCHOR_CHAIN_ID) : null,
     contractAddress: (process.env.ANCHOR_CONTRACT_ADDRESS || '') as `0x${string}` | '',
     // Separate key from the attestation signing key; pays Tempo gas (pathUSD).
     privateKey: (process.env.ANCHOR_PRIVATE_KEY || '') as `0x${string}` | '',
