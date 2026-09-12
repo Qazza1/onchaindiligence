@@ -515,7 +515,7 @@ export function buildOpenApiSpec() {
             signed: { const: true },
             schema_version: { const: 'onchaindiligence.attestation.v2' },
             issuer: { const: 'https://api.onchaindiligence.com' },
-            purpose: { type: 'string', enum: ['compliance-screening-result', 'verification-fixture', 'public-action-receipt', 'erc20-allowance-action', 'swap-action', 'bridge-action'] },
+            purpose: { type: 'string', enum: ['compliance-screening-result', 'verification-fixture', 'public-action-receipt', 'erc20-allowance-action', 'swap-action', 'bridge-action', 'staking-action'] },
             key_id: { type: 'string', example: 'ed25519-EXAMPLEKEY000000' },
             algorithm: { const: 'ed25519' },
             canonicalization: { const: 'RFC8785' },

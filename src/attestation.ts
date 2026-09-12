@@ -65,6 +65,8 @@ export const ATTESTATION_SWAP_ACTION_PURPOSE = 'swap-action'
 // signs its portable bridge artifacts through this same endpoint/scheme with
 // this purpose.
 export const ATTESTATION_BRIDGE_ACTION_PURPOSE = 'bridge-action'
+/** D3.6D portable Lido stETH submit authorization/observation artifacts only. */
+export const ATTESTATION_STAKING_ACTION_PURPOSE = 'staking-action'
 
 let privateKey: KeyObject | null = null
 let publicKeyPem: string | null = null
@@ -375,6 +377,7 @@ export function attest<T extends Record<string, unknown>>(
       | typeof ATTESTATION_ALLOWANCE_PURPOSE
       | typeof ATTESTATION_SWAP_ACTION_PURPOSE
       | typeof ATTESTATION_BRIDGE_ACTION_PURPOSE
+      | typeof ATTESTATION_STAKING_ACTION_PURPOSE
   } = {}
 ): Record<string, unknown> {
   const issuedAt = new Date().toISOString()
