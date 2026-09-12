@@ -138,6 +138,20 @@ await test('direct exposure is complete when the supported window has no counter
   assert.strictEqual(result.counterparties_screened, 0)
 })
 
+await test('direct exposure fails closed on an HTTP 200 with a missing data array (upstream schema drift)', async () => {
+  queueMock(200, {})
+  const result = await checkDirectExposure('0x0000000000000000000000000000000000000001')
+  assert.strictEqual(result.status, 'failed')
+  assert.strictEqual(result.evaluated, false)
+})
+
+await test('direct exposure fails closed on an HTTP 200 with a differently-shaped body (never silently empty)', async () => {
+  queueMock(200, { results: [] })
+  const result = await checkDirectExposure('0x0000000000000000000000000000000000000001')
+  assert.strictEqual(result.status, 'failed')
+  assert.strictEqual(result.evaluated, false)
+})
+
 await test('direct exposure is partial, never complete, when a counterparty screen fails', async () => {
   queueMock(200, {
     data: [
@@ -897,6 +911,54 @@ await test('/anchor accepts an authentic envelope into the payment gate', async 
     body: JSON.stringify(envelope),
   })
   assert.strictEqual(response.status, 402)
+})
+
+await test('every paid route fails closed BEFORE payment when signing is unavailable (never charges for a result it cannot sign)', async () => {
+  // Built while signing is still enabled, so this is a genuinely verifiable
+  // envelope -- the point of this case is that /anchor's readiness gate
+  // (not envelope validation) is what stops it once signing goes down.
+  const validAnchorEnvelope = att.attest({ sanctioned: false })
+  delete process.env.ATTESTATION_PRIVATE_KEY
+  att.__reinit()
+  try {
+    const paidRoutesWithValidInput: Array<[string, RequestInit?]> = [
+      ['/screen/0x7f268357A8c2552623316e2562D90e642bB538E5'],
+      ['/verdict/0x7f268357A8c2552623316e2562D90e642bB538E5'],
+      ['/screen-name?name=Vladimir+Putin'],
+      ['/company/12345678'],
+      ['/us-company?q=AAPL'],
+      ['/diligence?wallet=0x7f268357A8c2552623316e2562D90e642bB538E5'],
+      ['/web/screen/0x7f268357A8c2552623316e2562D90e642bB538E5'],
+      ['/web/screen-name?name=Vladimir+Putin'],
+      ['/web/company/12345678'],
+      ['/web/us-company?q=AAPL'],
+      [
+        '/anchor',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validAnchorEnvelope),
+        },
+      ],
+    ]
+    for (const [path, init] of paidRoutesWithValidInput) {
+      const response = await routeApp.request(path, init)
+      // /anchor's envelope-verification gate runs before its own readiness
+      // gate, and correctly 422s once the signing key is gone from the
+      // registry (the envelope is genuinely no longer verifiable) -- still a
+      // pre-payment rejection. Every other route has no such earlier gate,
+      // so 503 (requireSigningReadiness) is the only acceptable rejection.
+      const expected = path === '/anchor' ? [422, 503] : [503]
+      assert.ok(
+        expected.includes(response.status),
+        `${path} should fail closed pre-payment with one of ${expected}, got ${response.status}`
+      )
+      assert.notStrictEqual(response.status, 402, `${path} must never issue a payment challenge while unsigned`)
+    }
+  } finally {
+    process.env.ATTESTATION_PRIVATE_KEY = routeTestKey.export({ type: 'pkcs8', format: 'pem' }) as string
+    att.__reinit()
+  }
 })
 
 const attestAuthHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.ATTESTATION_SERVICE_TOKEN}` }

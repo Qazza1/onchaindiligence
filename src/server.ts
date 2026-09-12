@@ -68,6 +68,7 @@ import {
   anchoringEnabled,
   anchorSignature,
   isSignatureAnchored,
+  tempoNetworkLabel,
 } from './anchor.js'
 import { resolveToAddress, looksLikeEns, EnsResolutionError } from './ens.js'
 import { authorizeInternalBearer } from './internalAuth.js'
@@ -232,6 +233,27 @@ function healthGate(check: () => Promise<boolean>, providerName: string): Middle
   }
 }
 
+// The paid result contract is: pay only if a successful signed result can
+// actually be produced. Every paid route must confirm signing is enabled and
+// active BEFORE mppx.charge() takes payment -- otherwise attest() throwing
+// inside the handler means the caller already paid for a result they can
+// never receive. Reuses the exact readiness check the free internal routes
+// (/attest/ready, /internal/verdict/ready) already rely on; no parallel
+// readiness system.
+const requireSigningReadiness: MiddlewareHandler = async (c, next) => {
+  if (!attestationEnabled() || !attestationSigningReady()) {
+    c.header('Retry-After', '10')
+    return c.json(
+      {
+        error: 'attestation service temporarily unavailable',
+        detail: 'No payment was requested. Retry when signing readiness is restored.',
+      },
+      503
+    )
+  }
+  await next()
+}
+
 // Cheap, side-effect-free request validation. These guards run before payment
 // middleware so callers are never challenged or charged for malformed input.
 const validateAddressOrEns: MiddlewareHandler = async (c, next) => {
@@ -346,6 +368,7 @@ app.get(
   rateLimit,
   validateAddressOrEns,
   healthGate(chainalysisHealthy, 'Chainalysis'),
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.sanctionsCheck }),
   async (c) => {
     const input = c.req.param('address')
@@ -391,6 +414,7 @@ app.get(
   rateLimit,
   validateAddressOrEns,
   healthGate(chainalysisHealthy, 'Chainalysis'),
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.sanctionsCheck }),
   async (c) => {
     const input = c.req.param('address')
@@ -485,6 +509,7 @@ app.get(
   '/screen-name',
   rateLimit,
   validateNameScreenQuery,
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.nameScreen }),
   async (c) => {
     const name = c.req.query('name')
@@ -529,6 +554,7 @@ app.get(
   rateLimit,
   validateCompanyNumber,
   healthGate(companiesHouseHealthy, 'Companies House'),
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.companyCheck }),
   async (c) => {
     const companyNumber = c.req.param('companyNumber')
@@ -566,6 +592,7 @@ app.get(
   rateLimit,
   validateUsCompanyQuery,
   healthGate(edgarHealthy, 'SEC EDGAR'),
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.usCompanyCheck }),
   async (c) => {
     const q = c.req.query('q')
@@ -640,6 +667,7 @@ app.get(
   rateLimit,
   validateDiligenceQuery,
   diligenceHealthGate,
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.combinedDiligence }),
   async (c) => {
     const wallet = c.req.query('wallet')
@@ -728,6 +756,7 @@ app.get(
   rateLimit,
   validateAddressOrEns,
   healthGate(chainalysisHealthy, 'Chainalysis'),
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.webSanctionsCheck }),
   async (c) => {
     const input = c.req.param('address')
@@ -760,6 +789,7 @@ app.get(
   rateLimit,
   validateCompanyNumber,
   healthGate(companiesHouseHealthy, 'Companies House'),
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.webCompanyCheck }),
   async (c) => {
     const companyNumber = c.req.param('companyNumber')
@@ -786,6 +816,7 @@ app.get(
   '/web/screen-name',
   rateLimit,
   validateNameScreenQuery,
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.webNameScreen }),
   async (c) => {
     const name = c.req.query('name')
@@ -822,6 +853,7 @@ app.get(
   rateLimit,
   validateUsCompanyQuery,
   healthGate(edgarHealthy, 'SEC EDGAR'),
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.webUsCompanyCheck }),
   async (c) => {
     const q = c.req.query('q')
@@ -1022,6 +1054,7 @@ app.get('/anchored', async (c) => {
         ? new Date(result.anchoredAt * 1000).toISOString()
         : null,
       chain: 'Tempo',
+      network: tempoNetworkLabel(),
       contract: config.anchor.contractAddress,
     })
   } catch (err) {
@@ -1029,18 +1062,28 @@ app.get('/anchored', async (c) => {
   }
 })
 
+// Pre-payment readiness for /anchor specifically: anchoring itself needs the
+// Tempo anchor wallet/RPC (anchoringEnabled()), separate from the Ed25519
+// attestation signer (requireSigningReadiness) that signs this route's own
+// response. Both must be healthy before payment, not just one.
+const requireAnchoringReadiness: MiddlewareHandler = async (c, next) => {
+  if (!anchoringEnabled()) {
+    return c.json(
+      { error: 'on-chain anchoring is not configured on this deployment' },
+      503
+    )
+  }
+  await next()
+}
+
 app.post(
   '/anchor',
   rateLimit,
   validateAnchorRequest,
+  requireAnchoringReadiness,
+  requireSigningReadiness,
   mppx.charge({ amount: config.pricing.nameScreen }),
   async (c) => {
-    if (!anchoringEnabled()) {
-      return c.json(
-        { error: 'on-chain anchoring is not configured on this deployment' },
-        503
-      )
-    }
     const verified = c.get('verifiedAnchorAttestation')
     try {
       const { anchorHash, txHash, alreadyAnchored } = await anchorSignature(verified.signature)
@@ -1050,6 +1093,7 @@ app.post(
           tx_hash: alreadyAnchored ? null : txHash,
           already_anchored: alreadyAnchored,
           chain: 'Tempo',
+          network: tempoNetworkLabel(),
           contract: config.anchor.contractAddress,
           attestation_key_id: verified.keyId,
           attestation_key_status: verified.keyStatus,
