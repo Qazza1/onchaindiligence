@@ -61,6 +61,10 @@ export const ATTESTATION_RECEIPT_PURPOSE = 'public-action-receipt'
 export const ATTESTATION_ALLOWANCE_PURPOSE = 'erc20-allowance-action'
 /** D3.6B portable direct-swap authorization/observation artifacts only. */
 export const ATTESTATION_SWAP_ACTION_PURPOSE = 'swap-action'
+// D3.6C: onchaindiligence.bridge-action.v1 (onchaindiligence-mcp's bridgeEvidence.ts)
+// signs its portable bridge artifacts through this same endpoint/scheme with
+// this purpose.
+export const ATTESTATION_BRIDGE_ACTION_PURPOSE = 'bridge-action'
 
 let privateKey: KeyObject | null = null
 let publicKeyPem: string | null = null
@@ -370,6 +374,7 @@ export function attest<T extends Record<string, unknown>>(
       | typeof ATTESTATION_RECEIPT_PURPOSE
       | typeof ATTESTATION_ALLOWANCE_PURPOSE
       | typeof ATTESTATION_SWAP_ACTION_PURPOSE
+      | typeof ATTESTATION_BRIDGE_ACTION_PURPOSE
   } = {}
 ): Record<string, unknown> {
   const issuedAt = new Date().toISOString()
