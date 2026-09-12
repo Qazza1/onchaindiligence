@@ -1,20 +1,24 @@
 # OnchainDiligence audit findings register
 
-Last updated: 2026-08-27
+Last updated: 2026-09-12
 
 This is the durable source of truth for the August 2026 audit. A finding is not
 closed merely because code was written: `FIXED LOCALLY` still requires review,
 deployment, configuration where applicable, and production verification.
 
 Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
-`VERIFIED`, `ACCEPTED RISK`.
+`VERIFIED`, `ACCEPTED RISK`. The 2026-09-12 pass additionally distinguishes
+`VERIFIED PREVIEW` (confirmed on a non-production deployment only) from
+`VERIFIED PRODUCTION` (confirmed against the live production endpoint) where
+that distinction changes what a reader should trust; older rows keep their
+original `VERIFIED` wording and were not re-audited unless noted below.
 
 ## Critical
 
 | ID | Finding | Repository | Status | Exit criteria |
 |---|---|---|---|---|
 | OD-001 | Public `/attest` signs arbitrary caller-supplied claims with the production key | API, app, MCP | IN PROGRESS | Authenticated server-to-server route deployed and production canary receives 401; app export rebuilt behind authenticated backend; old key rotated and historical key status published |
-| OD-002 | Watchlist, case, notes, deletion and rescreen APIs have no authentication or tenant isolation | App | DECISION REQUIRED | Identity provider selected; organisation/user IDs replace `OWNER = default`; every query is authorized; cron uses separate machine authentication; access-control tests pass |
+| OD-002 | Watchlist, case, notes, deletion and rescreen APIs have no authentication or tenant isolation | App | VERIFIED PRODUCTION (partial) | 2026-09-12: `requireAuth()` (Clerk `verifyToken().sub`) replaces the hardcoded `OWNER='default'` constant on every case/watchlist route; `rescreen.js` uses a separate `CRON_SECRET` bearer path for Vercel Cron. Merged `main` (`dec1a3c`+merge), deployed production (`dpl_BVRnJD9fAvvHJCSWKnNQWjFxicUD`), 8/8 focused tests pass. **Verified in production:** unauthenticated and garbage-bearer requests to `/api/cases`, `/api/watchlist`, `/api/rescreen` all correctly return 401 fail-closed. **Not verified:** an authenticated caller sees only their own workspace, and a second caller cannot see the first's data — no live Clerk session or second test account was obtainable in the environment this pass ran in (no browser access, and creating an account or entering credentials is out of scope for an agent). Remains open until the owner (or a session with real browser access) confirms both cases manually |
 | OD-003 | JSON-RPC errors/malformed oracle responses become or are cached as clean | App | FIXED LOCALLY | Exact ABI boolean decoder deployed in browser and server functions; error/malformed-result tests pass; existing clean cache invalidated |
 | OD-004 | Tempo webhook reserves its dedupe ID before processing, permanently dropping failed retries | App | FIXED LOCALLY | Failure releases reservation or uses a transactional state machine; failed screening returns non-2xx; retry integration test passes |
 
@@ -33,6 +37,8 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-013 | Attestation verifier renders untrusted metadata through `innerHTML` | Site | FIXED LOCALLY | Metadata/data now use DOM nodes and `textContent`, classes are allowlisted, and baseline security headers/CSP are configured; add browser regression test, deploy and verify headers |
 | OD-014 | App database has no versioned schema, migrations, constraints or restore procedure | App | FIXED LOCALLY | Versioned baseline now defines tables, foreign keys, checks and indexes with application guidance; compare/apply in staging and complete a backup/restore drill |
 | OD-030 | GitHub Action verifies legacy v1 bytes while production paid routes emit v2 attestations | Action | FIXED LOCALLY | Action resolves the exact key, verifies v2 RFC8785 issuer/purpose bytes, retains explicit v1 compatibility, enforces lifecycle intervals/status, and passes tamper/lifecycle tests; publish a new immutable Action tag and run a paid production canary |
+| OD-033 | `/x402/*` payment-challenge middleware discarded its own return value; every paid HTTP route on mcp.onchaindiligence.com returned 500 instead of 402 with no payment header, so no agent could pay on the HTTP x402 rail | MCP | VERIFIED PRODUCTION | Self-inflicted regression from an earlier session's OPS-V2 work, found while live-verifying an unrelated pricing fix. `return await x402PaymentMiddleware(c, next)` (commit `41986bf`, merged `main` `8a8a023`, deployed `dpl_9Nf5dzMSSipLzbxqp1Yx4KFpySPi`). Confirmed live: `/x402/screen`, `/x402/verdict`, `/x402/preflight-bridge`, `/x402/preflight-staking` all correctly 402 with no payment header, no 500s |
+| OD-034 | `POST /anchor` hangs for the full 300-second Vercel function timeout regardless of body validity, instead of failing fast | API | OPEN | Discovered 2026-09-12 while checking OD-019's anchor-network claim against live production; confirmed via Vercel runtime logs (`Vercel Runtime Timeout Error: Task timed out after 300 seconds`) on both the pre-fix and post-fix (`373a705`) deployments, so this is a distinct, still-unresolved bug, not the same issue OD-022/M12 fixed. Every other route on the same domain (`/health`, `/anchored`, `/screen/:address`) responds in ~100ms. Needs targeted investigation of `anchorSignature`/`verifyAttestationForAnchoring` for an un-timed-out network call; not yet root-caused |
 
 ## Medium
 
@@ -54,7 +60,7 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
 | OD-028 | Live verifier sample fetches a paid endpoint without a payment client | Site | VERIFIED | Production verifier fetches the free fixed signed `verification-fixture`; end-to-end browser verification passed without payment or a real counterparty screen |
 | OD-029 | Tempo spike documentation/scripts do not match the repository state | Tempo spike | OPEN | Decide promote/archive; align scripts, README and tested deployment path |
 | OD-031 | SDK, CLI and website still send signature-only `/anchor` requests after the API began requiring a complete authentic v2 envelope | SDK, CLI, Site | OPEN | All clients submit the complete envelope, compatibility impact is documented, tests reject signature-only calls, and published docs contain only functioning examples |
-| OD-032 | SDK, CLI and browser call verification local/offline while requiring live key-registry access and not enforcing key validity intervals | SDK, CLI, Site | OPEN | Account-free verifier accepts caller-supplied trusted key material, reports VALID/INVALID/UNVERIFIABLE, enforces lifecycle windows, CLI works with network disabled, and online discovery is explicit opt-in |
+| OD-032 | SDK, CLI and browser call verification local/offline while requiring live key-registry access and not enforcing key validity intervals | SDK, CLI, Site | FIXED LOCALLY | 2026-09-12, CLI: `verify` requires either `--trust <keys.json>` (genuinely offline — `test/prevent-network.mjs` patches `globalThis.fetch` to throw and the test still passes) or the separate explicit `--fetch-keys` flag; omitting both is a hard error, never a silent default. 4/4 focused tests pass, merged `main` (`664cd60`). SDK's existing offline-verification test suite ("valid v2 and explicit legacy v1 verify offline without fetch", "online lookup is a separate wrapper and requires an explicit trust decision") re-ran clean this pass (153/153). Site's existing "public examples use full-envelope anchoring and explicit offline trust" test re-ran clean (75/75). Not `VERIFIED PRODUCTION`: CLI 0.2.0 and SDK 0.6.0 are merged to `main` but not published to npm — `npm whoami` returns 401 in this environment for both, a pre-existing blocker outside this session's control |
 
 ## Phase 1 change log
 
@@ -121,3 +127,38 @@ Status values: `OPEN`, `IN PROGRESS`, `DECISION REQUIRED`, `FIXED LOCALLY`,
   resolves the exact historical key, reconstructs RFC8785 issuer/purpose bytes,
   enforces key status and validity windows, and retains an explicit legacy v1
   path without downgrade fallback.
+- 2026-09-12: fixed a critical self-inflicted regression (OD-033) that broke
+  the 402 payment-challenge path on every paid HTTP route on
+  mcp.onchaindiligence.com; found, fixed and verified live in production the
+  same session it was introduced would have been caught in.
+- 2026-09-12: onchaindilige (API): C1 direct-exposure now fails closed on an
+  HTTP 200 response with a missing/unexpected `data` shape instead of treating
+  it as "no transfers found"; M6 every paid route (including `/anchor`) now
+  gates on signing readiness before payment; M12 removed the hardcoded default
+  Tempo RPC URL/chain ID so `/anchor` requires explicit configuration and
+  `/anchor`/`/anchored` report the real network (mainnet/moderato-testnet/
+  unknown) instead of assuming. 73/73 tests pass, typecheck clean, merged
+  `main` (`373a705`), deployed production (`dpl_GSx8QrEc2uHyFattAGYqKKcCtFVD`).
+  While verifying this, discovered OD-034 (`/anchor` request hang), which this
+  fix does not resolve — recorded separately, still open.
+- 2026-09-12: app (OD-002): wired Clerk server-side session verification into
+  every case/watchlist/rescreen route, replacing the hardcoded shared owner.
+  Fail-closed unauthenticated rejection verified in production; per-workspace
+  isolation verification remains open pending a real browser session (see
+  OD-002 row).
+- 2026-09-12: CLI and SDK (OD-032): confirmed the offline-verification
+  contract is genuine end-to-end (CLI, SDK, site), fixed a stale SDK-tarball
+  dependency pin in the CLI, fixed a missing `BASE_USDC` import in the SDK
+  README and in the site's `developers.html` quickstart sample (same bug
+  class, caught independently in each surface), and documented
+  `CircleCommerceExecutor`. Both packages merged to `main` (CLI 0.2.0,
+  `664cd60`; SDK 0.6.0, `cfcbfcb`) but not published — npm auth unavailable
+  in this environment. SDK 0.5.0 was left untouched on the registry.
+- 2026-09-12: site (OD-019, partial): added a "What's shipped today" coverage
+  summary to `developers.html` (settlement networks, commerce executors,
+  action-evidence types) with every listed item individually confirmed
+  against the actual MCP/SDK source before publishing. This closes only the
+  specific items touched this pass, not the full drift-detection automation
+  OD-019's exit criteria calls for, and does not include the larger docs
+  information-architecture rewrite (settlement-network pages, provider-
+  evidence pages, Arc docs) — that remains explicitly deferred, not done.
