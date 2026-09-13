@@ -39,6 +39,19 @@ bundle section next to it.
 > authorized, never settled, or later reversed -- the bundle only tells you
 > that the evidence describing it hasn't been tampered with.
 
+## Who signed what (assembly is not endorsement)
+
+> A bundle carries two different kinds of signature, and they mean different
+> things. Each artifact inside was signed by whoever issued it, when they
+> issued it. The bundle as a whole was signed by whoever assembled it --
+> usually you, on your own machine, with your own key, from artifacts you
+> already held. The outer signature proves that assembler collected exactly
+> these artifacts together and that nobody has changed the set since. It does
+> not mean OnChainDiligence endorses, republished, or re-checked what is
+> inside, and it does not extend anyone's attestation to anything else in the
+> bundle. Every embedded artifact carries exactly the authority its own
+> signature already carried -- being placed in a bundle adds none.
+
 ## Outer bundle validity vs. child validity
 
 > A bundle has two things worth knowing separately: whether the bundle itself

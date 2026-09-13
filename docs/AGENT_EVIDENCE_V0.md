@@ -501,6 +501,26 @@ required field. `bundle_id` continues to be the digest of the full payload
 them changes `bundle_id` exactly like any other payload content does today --
 no special-casing was added.
 
+**The assembler is not the issuer of what it assembles.** A bundle is sealed by
+whoever assembled it, using their own key -- which is normally NOT the
+OnChainDiligence production attestation key, since bundles are assembled
+locally from artifacts the assembler already holds. Two consequences a verifier
+and a reader must both keep straight:
+
+- A valid bundle signature proves that *that assembler* vouched for this exact
+  set of artifacts being collected together. It does not mean OnChainDiligence
+  endorses, republished, or re-verified the embedded evidence, and it confers
+  no OCD attestation on anything the bundle contains.
+- Conversely, an embedded artifact's own OCD signature says nothing about who
+  assembled the bundle around it, or why. Each embedded artifact carries
+  exactly the authority its own signature carried when it was issued --
+  no more, and no less, for having been placed in a bundle.
+
+`issuer` is the assembler's *asserted* identity and is never a trust root: it
+is not checked against the bundle's signing key, and a caller MUST resolve
+trust from key material supplied out of band, exactly as for any other
+signature in this contract.
+
 ### 14.2 Embedding heterogeneous artifacts
 
 The v0 record-graph model (`record.schema.json`, `proof.schema.json`) already
@@ -591,6 +611,49 @@ their exact content, and both now report `bundle_integrity: VALID` alongside a
 distinct `INVALID` / `UNVERIFIABLE` entry in `artifact_verifications[]`. A
 valid outer seal no longer hides a non-VALID child, and a non-VALID child no
 longer implies the bundle was tampered with.
+
+The report shape, as actually emitted by the merged implementations (dumped
+from `bundle-with-artifacts.json`, not transcribed from the types):
+
+```json
+{
+  "state": "VALID",
+  "bundle_id": "sha256:...",
+  "bundle_integrity": "VALID",
+  "artifact_verifications": [
+    {
+      "record_id": "sha256:...",
+      "state": "VALID",
+      "components": [
+        { "component": "artifact-binding", "state": "VALID", "code": "bundle-record-bound", "record_id": "sha256:...", "required": true, "message": "..." }
+      ]
+    }
+  ],
+  "components": [
+    { "component": "outer", "state": "VALID", "code": "outer-valid", "required": true, "message": "..." }
+  ]
+}
+```
+
+**The two implementations are not byte-normalized, and a consumer must not
+assume they are.** Verified by dumping both for the same fixture:
+
+| field | Python `to_dict()` | TypeScript `verifyBundle()` |
+| --- | --- | --- |
+| `state` | string | string |
+| `bundle_id` | string \| null | string \| null |
+| `components` | array | array |
+| `artifact_verifications[]` | `{record_id, state, components}` | identical |
+| `bundle_integrity` | **string** (`"VALID"`) | **object** (`{state, components}`) |
+| `valid` | absent | boolean (pre-dates D4.2) |
+
+`bundle_integrity` therefore needs a type check, not a direct comparison, in
+any cross-language consumer: `typeof x === 'string' ? x : x.state`. This
+divergence is a genuine gap in the report contract rather than an intended
+distinction -- the TypeScript form is the more useful one, since it carries the
+components behind the verdict. Converging them is runtime work and is
+deliberately out of scope for this documentation pass; it is recorded here so
+the CLI/SDK integration does not encode the difference into a public surface.
 
 Every bundle-tamper fixture (tampered manifest, removed artifact, inserted
 artifact) still reports `bundle_integrity: INVALID`, because those failures

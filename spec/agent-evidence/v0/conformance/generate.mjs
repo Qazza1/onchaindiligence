@@ -245,12 +245,11 @@ function signV2(privKey, kid, data, purpose, issuedAt) {
   return { data, attestation: { ...attestationWithoutSig, signed: true, signature } }
 }
 
-// A real "compliance-screening-result" v2 envelope -- the one purpose the
-// current v0 reference verifier already checks -- standing in for any
-// onchaindiligence.attestation.v2 artifact (screening results today;
-// allowance/swap/bridge/staking-action share the exact same {data,
-// attestation} envelope shape once a verifier accepts their purposes too;
-// see the D4.2 audit note on this in AGENT_EVIDENCE_V0.md section 14).
+// A real "compliance-screening-result" v2 envelope, standing in for any
+// onchaindiligence.attestation.v2 artifact: allowance/swap/bridge/staking-
+// action and public-action-receipt share the exact same {data, attestation}
+// envelope shape, and the verifier now accepts the full production purpose
+// allowlist (constants ATTESTATION_PURPOSES), not just this one.
 const screeningIssuedAt = '2026-08-28T12:00:02.000Z'
 const screeningV2Envelope = signV2(privateKey, keyId, { address: '0x0000000000000000000000000000000000000002', sanctioned: false }, 'compliance-screening-result', screeningIssuedAt)
 const screeningEvidence = record('evidence', [run.id], {
@@ -306,13 +305,13 @@ const receipt = {
 const receiptEvidence = record('evidence', [run.id], {
   evidence_type: 'onchaindiligence.public-action-receipt.v1',
   run_ref: run.id,
-  // external-digest only binds this record into the graph by digest; it does
-  // not give the v0 graph verifier a cryptographic source proof to check, so
-  // 'publisher-signed' would be a claim this verifier cannot back today. The
-  // receipt's own internal `proof` IS a real, independently verifiable v2
-  // attestation -- but checking it is receipt-aware verification this graph
-  // proof does not itself perform (see the D4.2 note above and
-  // AGENT_EVIDENCE_V0.md section 14).
+  // external-digest binds this record into the graph by digest; it is not
+  // itself a cryptographic source proof, so 'publisher-signed' would be a
+  // claim the graph layer cannot back -- hence 'agent-assertion'.
+  // The receipt's own internal `proof` IS verified, as a separate per-artifact
+  // result (see AGENT_EVIDENCE_V0.md section 14.6). Note that in-bundle check
+  // is weaker than the dedicated verifyReceiptEnvelope, which additionally
+  // pins the attestation purpose and recomputes receipt_digest/receipt_id.
   trust_mode: 'agent-assertion',
   source: { id: 'https://api.onchaindiligence.com', type: 'https-api' },
   tool: { name: 'erc20_allowance_preflight', version: '1' },
