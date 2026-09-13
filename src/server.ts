@@ -328,7 +328,11 @@ const validateAnchorRequest: MiddlewareHandler = async (c, next) => {
 
   let body: unknown
   try {
-    const rawBody = await c.req.raw.clone().text()
+    // The verified envelope is stored on the context; no downstream handler
+    // needs to re-read the request body. Reading the original stream avoids
+    // the unresolved cloned-stream behaviour observed in Vercel's Node
+    // adapter for malformed POST /anchor requests (OD-034).
+    const rawBody = await c.req.text()
     if (Buffer.byteLength(rawBody, 'utf8') > 256 * 1024) {
       return c.json({ error: 'attestation envelope must be at most 256 KiB' }, 413)
     }

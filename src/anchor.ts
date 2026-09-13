@@ -35,6 +35,13 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import { config } from './config.js'
 
+/**
+ * A paid anchor request must not wait through viem's retry budget while an RPC
+ * endpoint is degraded. The route converts this bounded transport failure to
+ * an explicit error; it never leaves a serverless invocation unresolved.
+ */
+export const ANCHOR_RPC_TIMEOUT_MS = 8_000
+
 // Minimal ABI — just what we call.
 const REGISTRY_ABI = [
   {
@@ -104,11 +111,18 @@ export function anchorHashForSignature(signatureBase64url: string): Hex {
 }
 
 function publicClient() {
-  return createPublicClient({ chain: tempoChain, transport: http(config.anchor.rpcUrl) })
+  return createPublicClient({
+    chain: tempoChain,
+    transport: http(config.anchor.rpcUrl, { timeout: ANCHOR_RPC_TIMEOUT_MS, retryCount: 0 }),
+  })
 }
 function walletClient() {
   const account = privateKeyToAccount(config.anchor.privateKey as Hex)
-  return createWalletClient({ account, chain: tempoChain, transport: http(config.anchor.rpcUrl) })
+  return createWalletClient({
+    account,
+    chain: tempoChain,
+    transport: http(config.anchor.rpcUrl, { timeout: ANCHOR_RPC_TIMEOUT_MS, retryCount: 0 }),
+  })
 }
 
 /**
