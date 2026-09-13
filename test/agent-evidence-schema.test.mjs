@@ -218,9 +218,35 @@ test('static fixtures exactly match deterministic generator output', async () =>
 
 test('corpus isolates signature, canonicalization, graph, version, trust, and parser failures', async () => {
   const manifest = await jsonFile(fixtureDirectory, 'manifest.json')
-  assert.deepEqual(manifest.cases.map(({ expected }) => expected), [
-    'VALID', 'INVALID', 'INVALID', 'INVALID', 'INVALID', 'UNVERIFIABLE', 'INVALID',
-  ])
+  // Keyed by case ID (not position) so adding a fixture can't silently change
+  // an existing case's asserted outcome, and a typo'd/missing/extra ID fails
+  // loudly via the set-equality check below rather than a length mismatch.
+  // Every D4.2 value here was verified against the real Python reference
+  // verify_bundle(), not hand-derived -- see AGENT_EVIDENCE_V0.md section 14.
+  const expectedByCaseId = {
+    'valid-full-graph': 'VALID',
+    'invalid-signature': 'INVALID',
+    'outer-version-mismatch': 'INVALID',
+    'noncanonical-signed-payload': 'INVALID',
+    'missing-parent': 'INVALID',
+    'unknown-key': 'UNVERIFIABLE',
+    'duplicate-outer-key': 'INVALID',
+    'bundle-with-artifacts': 'VALID',
+    'bundle-tampered-manifest': 'INVALID',
+    'bundle-removed-artifact': 'INVALID',
+    'bundle-inserted-artifact': 'INVALID',
+    'bundle-invalid-child': 'INVALID',
+    'bundle-unverifiable-child': 'UNVERIFIABLE',
+    'bundle-unknown-artifact-type': 'VALID',
+  }
+  assert.deepEqual(
+    new Set(manifest.cases.map(({ id }) => id)),
+    new Set(Object.keys(expectedByCaseId)),
+    'manifest case IDs must exactly match the documented corpus (add/remove a case here alongside manifest.json)',
+  )
+  for (const manifestCase of manifest.cases) {
+    assert.equal(manifestCase.expected, expectedByCaseId[manifestCase.id], manifestCase.id)
+  }
 
   const valid = await jsonFile(fixtureDirectory, 'valid-full-graph.json')
   const invalidSignature = structuredClone(valid)
