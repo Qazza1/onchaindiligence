@@ -1,0 +1,48 @@
+name: production-canary
+
+# D4.0 production trust canary: a read-only, external probe of live
+# production (API, app, and the public MCP server over plain HTTP). Never
+# sends a payment, never writes to chain. See tools/canary/run.ts for what
+# each invariant checks and why. A failing run means a real, currently-live
+# production invariant broke -- treat it the same as any other production
+# incident, not as flaky CI.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *' # every 6 hours, offset off the hour
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: run canary
+        run: |
+          set +e
+          npm run canary > canary-output.json
+          status=$?
+          {
+            echo "## Production trust canary"
+            if [ "$status" -eq 0 ]; then
+              echo "**All invariants held.**"
+            else
+              echo "**At least one invariant FAILED.** Treat as a production incident."
+            fi
+            echo ""
+            echo '```json'
+            cat canary-output.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
