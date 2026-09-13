@@ -125,6 +125,14 @@
       "expected": "UNVERIFIABLE",
       "reason": "unknown-artifact-graph-bound-only",
       "note": "A well-formed evidence record (schema 'onchaindiligence.some-future-action.v9') this verifier does not recognize, embedded via external-digest with trust_mode agent-assertion. The child is UNVERIFIABLE while bundle_integrity remains VALID; the convenience overall state is UNVERIFIABLE."
+    },
+    {
+      "id": "bundle-bad-reconciliation-reference",
+      "fixture": "bundle-bad-reconciliation-reference.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "reconciliation-record-missing",
+      "note": "The outer DSSE is valid but reconciliation references a record absent from the sealed payload; that structural defect is INVALID."
     }
   ]
 }

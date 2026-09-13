@@ -22,6 +22,7 @@ SCHEMA_NAMES = (
     "record.schema.json",
     "bundle-payload.schema.json",
     "portable-file.schema.json",
+    "public-action-receipt.schema.json",
 )
 
 

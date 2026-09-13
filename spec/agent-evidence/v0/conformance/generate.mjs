@@ -269,7 +269,7 @@ const screeningEvidence = record('evidence', [run.id], {
 // {data,attestation} envelope, so it is embedded via external-digest for
 // outer graph binding -- its own internal `proof` is independently
 // verifiable by a receipt-aware verifier, a step this v0 graph proof does
-// not itself perform; see the D4.2 note on this distinction).
+// independently performs before reporting the child artifact as VALID.
 const receiptIssuedAt = '2026-08-28T12:00:03.000Z'
 // Exactly packages/agent-evidence/src/receipts.ts's ReceiptCoreFields -- every
 // receipt field EXCEPT receipt_id/receipt_digest, which are DERIVED from this
@@ -305,13 +305,11 @@ const receipt = {
 const receiptEvidence = record('evidence', [run.id], {
   evidence_type: 'onchaindiligence.public-action-receipt.v1',
   run_ref: run.id,
-  // external-digest binds this record into the graph by digest; it is not
-  // itself a cryptographic source proof, so 'publisher-signed' would be a
-  // claim the graph layer cannot back -- hence 'agent-assertion'.
-  // The receipt's own internal `proof` IS verified, as a separate per-artifact
-  // result (see AGENT_EVIDENCE_V0.md section 14.6). Note that in-bundle check
-  // is weaker than the dedicated verifyReceiptEnvelope, which additionally
-  // pins the attestation purpose and recomputes receipt_digest/receipt_id.
+  // external-digest only binds this record into the graph by digest; it does
+  // not give the v0 graph verifier a cryptographic source proof to check, so
+  // 'publisher-signed' would be a claim this verifier cannot back today. The
+  // receipt's own internal `proof` is independently checked by the dedicated
+  // receipt verifier; this external digest remains graph binding only.
   trust_mode: 'agent-assertion',
   source: { id: 'https://api.onchaindiligence.com', type: 'https-api' },
   tool: { name: 'erc20_allowance_preflight', version: '1' },
@@ -344,7 +342,15 @@ const unknownEvidence = record('evidence', [run.id], {
 function buildBundlePayload(evidenceRecords) {
   const allRecords = [principal, agent, mandate, run, ...evidenceRecords].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   const rootIds = evidenceRecords.map((r) => r.id).sort()
-  const agreementRecordIds = evidenceRecords.map((r) => r.id).sort()
+  const receipt = evidenceRecords.find((record) => record.statement.evidence_type === 'onchaindiligence.public-action-receipt.v1')
+  const screening = evidenceRecords.find((record) => record.statement.evidence_type === 'sanctions-screen')
+  const agreements = receipt && screening ? [
+    {
+      subject: 'sanctions-screen-agrees-with-allowance-preflight-policy',
+      record_ids: [screening.id, receipt.id].sort(),
+      summary: 'The sanctions screen found no match for the counterparty, and the allowance preflight independently reached ALLOW under its own policy -- both checks agree the proposed action is not blocked by either evidence source.',
+    },
+  ] : []
   const payloadWithoutId = {
     bundle_version: 'onchaindiligence.agent-evidence.bundle.v0',
     created_at: '2026-08-28T12:00:06.000Z',
@@ -353,13 +359,7 @@ function buildBundlePayload(evidenceRecords) {
     root_ids: rootIds,
     records: allRecords,
     reconciliation: {
-      agreements: [
-        {
-          subject: 'sanctions-screen-agrees-with-allowance-preflight-policy',
-          record_ids: agreementRecordIds,
-          summary: 'The sanctions screen found no match for the counterparty, and the allowance preflight independently reached ALLOW under its own policy -- both checks agree the proposed action is not blocked by either evidence source.',
-        },
-      ],
+      agreements,
       contradictions: [],
       insufficient_evidence: [
         {
@@ -468,6 +468,50 @@ const bundleUnverifiableChild = sealPortable(bundleUnverifiableChildPayload, pri
 const bundleUnknownArtifactTypePayload = buildBundlePayload([screeningEvidence, unknownEvidence])
 const bundleUnknownArtifactType = sealPortable(bundleUnknownArtifactTypePayload, privateKey, keyId)
 
+// Case: the outer seal is valid but reconciliation names a record this bundle
+// does not contain. This is structural invalidity, not a claim about evidence.
+const bundleBadReconciliationPayload = structuredClone(bundleWithArtifactsPayload)
+bundleBadReconciliationPayload.reconciliation.agreements[0].record_ids = [
+  screeningEvidence.id,
+  'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+]
+{
+  const { bundle_id: _ignored, ...withoutId } = bundleBadReconciliationPayload
+  bundleBadReconciliationPayload.bundle_id = `sha256:${digest(withoutId)}`
+}
+const bundleBadReconciliationReference = sealPortable(bundleBadReconciliationPayload, privateKey, keyId)
+
+const bundleSingletonContradictionPayload = structuredClone(bundleWithArtifactsPayload)
+bundleSingletonContradictionPayload.reconciliation.contradictions = [{
+  subject: 'singleton-contradiction',
+  record_ids: [screeningEvidence.id],
+  summary: 'A singleton cannot establish a contradiction.',
+}]
+{
+  const { bundle_id: _ignored, ...withoutId } = bundleSingletonContradictionPayload
+  bundleSingletonContradictionPayload.bundle_id = `sha256:${digest(withoutId)}`
+}
+const bundleSingletonContradiction = sealPortable(bundleSingletonContradictionPayload, privateKey, keyId)
+
+// Dedicated receipt-verification variants are generated from the same public
+// deterministic key material. They are not bundle corpus cases: callers use
+// them to pin receipt-proof tri-state behavior in both language SDKs.
+const receiptWrongPurpose = {
+  ...receipt,
+  proof: signV2(privateKey, keyId, finalizedReceipt, 'compliance-screening-result', receiptIssuedAt).attestation,
+}
+const receiptBadDigestValue = {
+  ...finalizedReceipt,
+  receipt_digest: 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+}
+const receiptBadDigest = {
+  ...receipt,
+  receipt: receiptBadDigestValue,
+  proof: signV2(privateKey, keyId, receiptBadDigestValue, 'public-action-receipt', receiptIssuedAt).attestation,
+}
+const receiptTamperedProof = structuredClone(receipt)
+receiptTamperedProof.proof.signature = `${receiptTamperedProof.proof.signature[0] === 'A' ? 'B' : 'A'}${receiptTamperedProof.proof.signature.slice(1)}`
+
 const generated = {
   portable,
   invalidSignature,
@@ -482,6 +526,12 @@ const generated = {
   bundleInvalidChild,
   bundleUnverifiableChild,
   bundleUnknownArtifactType,
+  bundleBadReconciliationReference,
+  bundleSingletonContradiction,
+  receipt,
+  receiptWrongPurpose,
+  receiptBadDigest,
+  receiptTamperedProof,
   childKeyRecord: {
     key_id: childKeyId,
     algorithm: 'ed25519',

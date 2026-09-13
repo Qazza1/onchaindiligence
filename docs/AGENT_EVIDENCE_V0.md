@@ -723,54 +723,30 @@ validated against the REAL Python reference `verify_bundle()` and the REAL
 TypeScript `verifyBundle()` -- not asserted by hand. What each field is and is
 not actually checked for, as of the D4.2 core landing:
 
-- `reconciliation.*.record_ids` **are** now resolved: every referenced id must
+- `reconciliation.*.record_ids` **are** resolved: every referenced id must
   name a record present in the same bundle, or the bundle reports
-  `reconciliation-record-missing` / INVALID. What is still NOT enforced is the
-  stronger semantic rule stated in the field's own schema description -- that a
-  `contradictions` entry requires at least two referenced records whose
-  statements actually disagree. A single-record "contradiction" still passes.
+  `reconciliation-record-missing` / INVALID. A `contradictions` entry must
+  also cite at least two distinct records. The verifier does not infer whether
+  those records substantively disagree; reconciliation summarizes contained
+  evidence and creates no new fact.
 - `limitations` content remains inert data. Nothing checks its wording, and
   nothing should: it is a publisher assertion, not a verifiable claim.
-- A `public-action-receipt.v1` embedded via `external-digest` **does** now get
-  its own internal `receipt.proof` verified as a separate component, in both
-  languages. Two caveats, verified empirically against the shipped code:
-  1. The bundle path routes that proof through the generic attestation
-     verifier, which accepts any purpose in the production allowlist. The
-     dedicated `verifyReceiptEnvelope` pins `purpose` to exactly
-     `public-action-receipt`. A receipt whose proof declares, say,
-     `swap-action` is therefore accepted inside a bundle and rejected by
-     `verifyReceiptEnvelope` (`purpose-mismatch`).
-  2. The bundle path does not recompute `receipt_digest` / `receipt_id`;
-     `verifyReceiptEnvelope` does. A receipt that is correctly signed but
-     internally inconsistent passes the bundle path and fails
-     `verifyReceiptEnvelope` (`digest-mismatch`).
-
-  Neither is forgeable without the signing key -- the signature still covers
-  the whole receipt -- but both mean the bundle path is a weaker statement
-  about a receipt than the dedicated receipt verifier, and the two can
-  disagree about the same artifact. Treat `verifyReceiptEnvelope` as
-  authoritative for receipts until the bundle path pins the purpose and
-  recomputes the digest.
-- The success-path component for an embedded receipt's own proof is currently
-  emitted as `source-proof`, not `receipt-proof` (the generic attestation
-  verifier hardcodes its own component name). The `receipt-proof` label only
-  appears on the missing-proof error path, so a consumer reading `components`
-  cannot yet tell a record's own `external-digest` proof apart from the
-  embedded receipt's internal attestation proof.
+- A `public-action-receipt.v1` embedded via `external-digest` uses the same
+  dedicated receipt contract as `verifyReceiptEnvelope`, in both languages:
+  it pins `purpose` to `public-action-receipt`, recomputes
+  `receipt_digest`/`receipt_id`, validates the RFC8785-finalized receipt, and
+  verifies the Ed25519 proof under caller-supplied trust. Its result is emitted
+  as `receipt-proof`, distinct from graph-binding `source-proof`.
 
 ### 14.7 Core implementation plan -- status
 
 Items 1-5 below **have landed** in both the Python and TypeScript reference
-implementations; the plan text is kept as the record of what was asked for and
-why. Item 6 (CLI/API/SDK integration) has **not** landed: no published surface
-can create or verify a bundle yet. Two follow-ups opened by the landing itself
-are tracked in 14.6 -- the receipt purpose/digest divergence, and the
-`receipt-proof` component mislabel -- plus one producer-side gap: the supported
-producer API (`createBundlePayload`) still cannot emit `issuer`,
-`reconciliation` or `limitations`, so the only way to build a bundle carrying
-the D4.2 fields today is to assemble the payload object by hand, as
-`generate.mjs` does. A verifier that checks fields no supported producer can
-write is a real asymmetry, not a cosmetic one.
+implementations; the plan text is retained as the record of the original
+scope. Later D4.2 hardening closed the receipt purpose/digest/id gap, assigned
+the dedicated `receipt-proof` component, requires two distinct records for a
+contradiction, and added `issuer`, `reconciliation`, and `limitations` to the
+local `createBundlePayload` API. The remaining CLI/SDK distribution work is
+tracked by its own release notes; it does not alter this protocol contract.
 
 In priority order, each independently shippable and independently testable
 against the existing conformance corpus:

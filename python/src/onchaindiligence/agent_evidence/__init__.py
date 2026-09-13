@@ -19,7 +19,8 @@ from .errors import (
     TrustPolicyError,
 )
 from .graph import validate_bundle_payload
-from .models import ComponentResult, VerificationReport, VerificationState
+from .models import BundleIntegrityVerification, ComponentResult, VerificationReport, VerificationState
+from .receipts import verify_receipt_envelope
 from .records import create_bundle_payload, create_record
 from .trust import (
     AttestationKey,
@@ -38,6 +39,7 @@ __all__ = [
     "SPECIFICATION_ID",
     "AgentEvidenceError",
     "AttestationKey",
+    "BundleIntegrityVerification",
     "CanonicalizationError",
     "ComponentResult",
     "EvidenceValidationError",
@@ -63,6 +65,7 @@ __all__ = [
     "seal_bundle",
     "validate_bundle_payload",
     "verify_bundle",
+    "verify_receipt_envelope",
 ]
 
 __version__ = "0.1.0"

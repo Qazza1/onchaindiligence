@@ -102,5 +102,9 @@ export interface VerificationReport {
   bundle_integrity: { state: VerificationState; components: ComponentResult[] }
   /** One independently visible result for every record bound into the bundle. */
   artifact_verifications: Array<{ record_id: string; state: VerificationState; components: ComponentResult[] }>
+  /** Publisher-supplied reconciliation; its record references are separately checked. */
+  reconciliation: JsonObject | null
+  /** Publisher-supplied limitations. They are data, never a verification result. */
+  limitations: string[]
   payload?: BundlePayload
 }

@@ -18,6 +18,7 @@ import {
 import { validateBundlePayload } from './graph.js'
 import { validateDocument } from './schema.js'
 import { evaluateKeyLifecycle, type AttestationKey, TrustPolicy } from './trust.js'
+import { verifyReceiptEnvelope } from './receipts.js'
 import type {
   AgentEvidenceRecord,
   BundlePayload,
@@ -78,6 +79,8 @@ function report(components: ComponentResult[], payload?: BundlePayload): Verific
       const children = components.filter((item) => item.record_id === record.id)
       return { record_id: record.id, state: overallState(children), components: children }
     }),
+    reconciliation: payload?.reconciliation ?? null,
+    limitations: payload?.limitations ?? [],
   }
   if (payload) value.payload = payload
   return value
@@ -278,10 +281,16 @@ function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): Compon
             components.push(result('receipt-proof', 'INVALID', 'receipt-proof-missing',
               'embedded public receipt must contain its own attestation proof', { recordId: record.id }))
           } else {
-            components.push(verifyAttestationProof({
-              proof_type: 'onchaindiligence-attestation-v2',
-              envelope: { data: receipt, attestation: receiptProof },
-            }, policy, record.id))
+            try {
+              const verified = verifyReceiptEnvelope(receiptEnvelope, policy)
+              components.push(result('receipt-proof', verified.state, verified.code, verified.message, {
+                recordId: record.id,
+                ...(verified.keyId === undefined ? {} : { keyId: verified.keyId }),
+              }))
+            } catch (error) {
+              components.push(result('receipt-proof', 'INVALID', 'receipt-proof-invalid',
+                error instanceof Error ? error.message : String(error), { recordId: record.id }))
+            }
           }
         }
       } else if (
@@ -341,15 +350,16 @@ function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): Compon
   return components
 }
 
-const RECOGNIZED_EVIDENCE_FAMILIES = new Set([
+export const RECOGNIZED_EVIDENCE_FAMILIES = [
   'sanctions-screen', 'us-public-company-record', 'technocore-signed-message', 'tclk-transcript',
   'recipient-binding-check', 'recipient-check', 'interop-fixture', 'onchaindiligence.public-action-receipt.v1',
-])
+] as const
+const recognizedEvidenceFamilies = new Set<string>(RECOGNIZED_EVIDENCE_FAMILIES)
 
 function verifyArtifactFamilies(payload: BundlePayload): ComponentResult[] {
   return payload.records.filter((record) => record.kind === 'evidence').flatMap((record) => {
     const type = String(record.statement.evidence_type)
-    return RECOGNIZED_EVIDENCE_FAMILIES.has(type) ? [] : [result('artifact-family', 'UNVERIFIABLE',
+    return recognizedEvidenceFamilies.has(type) ? [] : [result('artifact-family', 'UNVERIFIABLE',
       'unknown-artifact-family', `evidence_type ${type} is not recognized by this verifier`, { recordId: record.id })]
   })
 }
@@ -361,7 +371,12 @@ function verifyReconciliationReferences(payload: BundlePayload): ComponentResult
   const components: ComponentResult[] = []
   for (const group of ['agreements', 'contradictions', 'insufficient_evidence']) {
     for (const entry of (reconciliation[group] as JsonObject[])) {
-      for (const recordId of ((entry.record_ids ?? []) as string[])) {
+      const references = (entry.record_ids ?? []) as string[]
+      if (group === 'contradictions' && new Set(references).size < 2) {
+        components.push(result('reconciliation', 'INVALID', 'contradiction-records-insufficient',
+          'a reconciliation contradiction must reference at least two distinct records'))
+      }
+      for (const recordId of references) {
         if (!recordIds.has(recordId)) components.push(result('reconciliation', 'INVALID', 'reconciliation-record-missing',
           `reconciliation ${group} references a record not present in this bundle`, { recordId }))
       }

@@ -61,14 +61,30 @@ class ArtifactVerification:
 
 
 @dataclass(frozen=True, slots=True)
+class BundleIntegrityVerification:
+    """Outer DSSE/payload/DAG verification, kept distinct from child artifacts."""
+
+    state: VerificationState
+    components: tuple[ComponentResult, ...]
+
+    def to_dict(self) -> JsonObject:
+        return {
+            "state": self.state.value,
+            "components": [component.to_dict() for component in self.components],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class VerificationReport:
     """Machine-readable offline verification report."""
 
     state: VerificationState
     components: tuple[ComponentResult, ...]
-    bundle_integrity: VerificationState
+    bundle_integrity: BundleIntegrityVerification
     artifact_verifications: tuple[ArtifactVerification, ...]
     bundle_id: str | None = None
+    reconciliation: JsonObject | None = None
+    limitations: tuple[str, ...] = ()
     payload: JsonObject | None = field(default=None, repr=False, compare=False)
 
     @property
@@ -80,8 +96,10 @@ class VerificationReport:
             "state": self.state.value,
             "bundle_id": self.bundle_id,
             "components": [component.to_dict() for component in self.components],
-            "bundle_integrity": self.bundle_integrity.value,
+            "bundle_integrity": self.bundle_integrity.to_dict(),
             "artifact_verifications": [item.to_dict() for item in self.artifact_verifications],
+            "reconciliation": self.reconciliation,
+            "limitations": list(self.limitations),
         }
         if include_payload and self.payload is not None:
             result["payload"] = self.payload

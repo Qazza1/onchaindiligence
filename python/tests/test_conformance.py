@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import socket
+import subprocess
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,9 @@ from onchaindiligence.agent_evidence import (
     parse_json,
     parse_timestamp,
     verify_bundle,
+    verify_receipt_envelope,
 )
+from onchaindiligence.agent_evidence.verifier import _RECOGNIZED_EVIDENCE_FAMILIES
 
 from .helpers import build_conformance_portable
 
@@ -82,14 +85,8 @@ def test_packaged_schemas_are_exact_contract_copies() -> None:
 
 def test_packaged_conformance_files_are_exact_contract_copies() -> None:
     packaged = files("onchaindiligence.agent_evidence").joinpath("conformance")
-    sources = {
-        "manifest.json": CORPUS / "manifest.json",
-        "valid-full-graph.json": CORPUS / "valid-full-graph.json",
-        "noncanonical-payload.json": CORPUS / "noncanonical-payload.json",
-        "missing-parent.json": CORPUS / "missing-parent.json",
-        "duplicate-outer-key.json": CORPUS / "duplicate-outer-key.json",
-        "rfc8785-vectors.json": ROOT / "conformance" / "rfc8785-vectors.json",
-    }
+    sources = {source.name: source for source in CORPUS.glob("*.json")}
+    sources["rfc8785-vectors.json"] = ROOT / "conformance" / "rfc8785-vectors.json"
     for name, source in sources.items():
         assert packaged.joinpath(name).read_bytes() == source.read_bytes(), name
 
@@ -140,7 +137,7 @@ def test_bundle_integrity_and_per_artifact_verification_are_separated() -> None:
 
     invalid_child = load_json(CORPUS / "bundle-invalid-child.json")
     report = verify_bundle(invalid_child, policy)
-    assert report.bundle_integrity is VerificationState.VALID
+    assert report.bundle_integrity.state is VerificationState.VALID
     assert report.state is VerificationState.INVALID
     assert any(item.state is VerificationState.INVALID for item in report.artifact_verifications)
     codes = {c.code for c in report.components}
@@ -149,7 +146,7 @@ def test_bundle_integrity_and_per_artifact_verification_are_separated() -> None:
 
     unverifiable_child = load_json(CORPUS / "bundle-unverifiable-child.json")
     report = verify_bundle(unverifiable_child, policy)
-    assert report.bundle_integrity is VerificationState.VALID
+    assert report.bundle_integrity.state is VerificationState.VALID
     assert report.state is VerificationState.UNVERIFIABLE
     assert any(item.state is VerificationState.UNVERIFIABLE for item in report.artifact_verifications)
     assert any(c.code == "key-not-trusted" for c in report.components)
@@ -160,6 +157,31 @@ def test_unknown_artifact_family_is_flagged_unverifiable() -> None:
     policy = trusted_policy(load_json(CORPUS / "valid-full-graph.json"))
     unknown = load_json(CORPUS / "bundle-unknown-artifact-type.json")
     report = verify_bundle(unknown, policy)
-    assert report.bundle_integrity is VerificationState.VALID
+    assert report.bundle_integrity.state is VerificationState.VALID
     assert report.state is VerificationState.UNVERIFIABLE
     assert any(item.state is VerificationState.UNVERIFIABLE for item in report.artifact_verifications)
+
+
+def test_recognized_artifact_families_match_the_shared_contract() -> None:
+    assert tuple(sorted(_RECOGNIZED_EVIDENCE_FAMILIES)) == tuple(
+        sorted(parse_json((CORPUS / "recognized-evidence-families.json").read_bytes()))
+    )
+
+
+def test_dedicated_receipt_verifier_matches_the_deterministic_cross_language_vectors() -> None:
+    generator = CORPUS / "generate.mjs"
+
+    def generated(selector: str) -> dict[str, Any]:
+        return json.loads(subprocess.check_output(["node", generator, selector], text=True))  # noqa: S603, S607
+
+    policy = trusted_policy(load_json(CORPUS / "valid-full-graph.json"))
+    expected = {
+        "receipt": (VerificationState.VALID, "key-window-valid"),
+        "receiptWrongPurpose": (VerificationState.INVALID, "purpose-mismatch"),
+        "receiptBadDigest": (VerificationState.INVALID, "digest-mismatch"),
+        "receiptTamperedProof": (VerificationState.INVALID, "signature-invalid"),
+    }
+    for selector, (state, code) in expected.items():
+        result = verify_receipt_envelope(generated(selector), policy)
+        assert (result.state, result.code) == (state, code), selector
+    assert verify_receipt_envelope(generated("receipt"), TrustPolicy(now=NOW)).state is VerificationState.UNVERIFIABLE

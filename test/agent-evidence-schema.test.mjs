@@ -10,6 +10,7 @@ import addFormats from 'ajv-formats'
 const schemaDirectory = fileURLToPath(new URL('../spec/agent-evidence/v0/schema/', import.meta.url))
 const fixtureDirectory = fileURLToPath(new URL('../spec/agent-evidence/v0/conformance/', import.meta.url))
 const generatorFile = fileURLToPath(new URL('../spec/agent-evidence/v0/conformance/generate.mjs', import.meta.url))
+const fixtureSyncFile = fileURLToPath(new URL('../spec/agent-evidence/v0/conformance/sync.mjs', import.meta.url))
 const schemaBase = 'https://onchaindiligence.com/schemas/agent-evidence/v0/'
 const payloadType = 'application/vnd.onchaindiligence.agent-evidence.bundle.v0+json'
 
@@ -210,10 +211,22 @@ test('static fixtures exactly match deterministic generator output', async () =>
     ['portable', 'valid-full-graph.json'],
     ['noncanonicalPayload', 'noncanonical-payload.json'],
     ['missingParent', 'missing-parent.json'],
+    ['bundleWithArtifacts', 'bundle-with-artifacts.json'],
+    ['bundleTamperedManifest', 'bundle-tampered-manifest.json'],
+    ['bundleRemovedArtifact', 'bundle-removed-artifact.json'],
+    ['bundleInsertedArtifact', 'bundle-inserted-artifact.json'],
+    ['bundleInvalidChild', 'bundle-invalid-child.json'],
+    ['bundleUnverifiableChild', 'bundle-unverifiable-child.json'],
+    ['bundleUnknownArtifactType', 'bundle-unknown-artifact-type.json'],
+    ['bundleBadReconciliationReference', 'bundle-bad-reconciliation-reference.json'],
   ]) {
     const generated = JSON.parse(execFileSync(process.execPath, [generatorFile, selector], { encoding: 'utf8' }))
     assert.deepEqual(generated, await jsonFile(fixtureDirectory, name), name)
   }
+})
+
+test('every D4.2 bundle fixture and package mirror is generated from the canonical source', () => {
+  execFileSync(process.execPath, [fixtureSyncFile, '--check'], { stdio: 'inherit' })
 })
 
 test('corpus isolates signature, canonicalization, graph, version, trust, and parser failures', async () => {
@@ -238,6 +251,7 @@ test('corpus isolates signature, canonicalization, graph, version, trust, and pa
     'bundle-invalid-child': 'INVALID',
     'bundle-unverifiable-child': 'UNVERIFIABLE',
     'bundle-unknown-artifact-type': 'UNVERIFIABLE',
+    'bundle-bad-reconciliation-reference': 'INVALID',
   }
   assert.deepEqual(
     new Set(manifest.cases.map(({ id }) => id)),

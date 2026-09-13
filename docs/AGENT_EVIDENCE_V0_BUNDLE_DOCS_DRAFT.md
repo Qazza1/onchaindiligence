@@ -93,10 +93,6 @@ bundle validity vs. child validity" (section 14.3, `bundle_integrity` +
 `unknown-artifact-family` → UNVERIFIABLE), which were the two previously
 blocked on core work.
 
-One accuracy caveat to carry into whatever ships: the "What a bundle proves"
-paragraph says each embedded artifact "can be verified on its own." That is
-true, but for a `public-action-receipt.v1` the dedicated
-`verifyReceiptEnvelope` is stricter than the in-bundle check (it pins the
-attestation purpose and recomputes `receipt_digest`/`receipt_id` -- see
-section 14.6). Do not write copy implying the two always agree; they can
-disagree about the same receipt today.
+For a `public-action-receipt.v1`, the in-bundle path uses the same dedicated
+`verifyReceiptEnvelope` contract: purpose, receipt digest/id, canonicalized
+content, and Ed25519 proof are all checked under caller-supplied trust.

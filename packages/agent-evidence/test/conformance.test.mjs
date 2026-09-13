@@ -1,17 +1,22 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import {
   canonicalizeText,
   parseJson,
   TrustPolicy,
   verifyBundle,
+  verifyReceiptEnvelope,
 } from '../dist/index.js'
+import { RECOGNIZED_EVIDENCE_FAMILIES } from '../dist/verifier.js'
 
 const conformance = new URL('../conformance/', import.meta.url)
 const schemas = new URL('../schemas/', import.meta.url)
 const repositorySchemas = new URL('../../../spec/agent-evidence/v0/schema/', import.meta.url)
 const repositoryConformance = new URL('../../../spec/agent-evidence/v0/conformance/', import.meta.url)
+const fixtureGenerator = fileURLToPath(new URL('../../../spec/agent-evidence/v0/conformance/generate.mjs', import.meta.url))
 
 async function json(url) {
   return JSON.parse(await readFile(url, 'utf8'))
@@ -49,6 +54,15 @@ test('packaged schemas and corpus are byte-identical to the canonical repository
     'noncanonical-payload.json',
     'missing-parent.json',
     'duplicate-outer-key.json',
+    'bundle-with-artifacts.json',
+    'bundle-tampered-manifest.json',
+    'bundle-removed-artifact.json',
+    'bundle-inserted-artifact.json',
+    'bundle-invalid-child.json',
+    'bundle-unverifiable-child.json',
+    'bundle-unknown-artifact-type.json',
+    'bundle-bad-reconciliation-reference.json',
+    'recognized-evidence-families.json',
   ]) {
     assert.deepEqual(
       await readFile(new URL(name, conformance)),
@@ -110,4 +124,43 @@ test('D4.2 keeps outer integrity separate from every artifact result', async () 
   assert.equal(unknown.bundle_integrity.state, 'VALID')
   assert.equal(unknown.state, 'UNVERIFIABLE')
   assert.ok(unknown.artifact_verifications.some((item) => item.state === 'UNVERIFIABLE'))
+})
+
+test('recognized artifact families are pinned to the shared cross-language contract', async () => {
+  assert.deepEqual(
+    RECOGNIZED_EVIDENCE_FAMILIES,
+    await json(new URL('recognized-evidence-families.json', conformance)),
+  )
+})
+
+test('a validly sealed reconciliation cannot cite a missing record or a one-record contradiction', async () => {
+  const base = await json(new URL('valid-full-graph.json', conformance))
+  const policy = policyFor(base, ['ed25519-3rLe053Cb84OYIW2'])
+  const missing = verifyBundle(await json(new URL('bundle-bad-reconciliation-reference.json', conformance)), policy)
+  assert.equal(missing.bundle_integrity.state, 'VALID')
+  assert.equal(missing.state, 'INVALID')
+  assert.ok(missing.components.some((item) => item.code === 'reconciliation-record-missing'))
+
+  const report = verifyBundle(await json(new URL('bundle-singleton-contradiction.json', conformance)), policy)
+  assert.ok(report.components.some((item) => item.code === 'contradiction-records-insufficient'))
+})
+
+test('embedded receipt proof uses the dedicated receipt contract in every tri-state outcome', async () => {
+  const load = (selector) => JSON.parse(execFileSync(process.execPath, [fixtureGenerator, selector], { encoding: 'utf8' }))
+  const base = await json(new URL('valid-full-graph.json', conformance))
+  const policy = policyFor(base, ['ed25519-3rLe053Cb84OYIW2'])
+  const unknown = TrustPolicy.fromKeyRecords([], { now: new Date('2026-08-28T12:01:00.000Z') })
+  for (const [selector, expected, code] of [
+    ['receipt', 'VALID', 'key-window-valid'],
+    ['receiptWrongPurpose', 'INVALID', 'purpose-mismatch'],
+    ['receiptBadDigest', 'INVALID', 'digest-mismatch'],
+    ['receiptTamperedProof', 'INVALID', 'signature-invalid'],
+  ]) {
+    const checked = verifyReceiptEnvelope(load(selector), policy)
+    assert.equal(checked.state, expected, selector)
+    assert.equal(checked.code, code, selector)
+  }
+  assert.equal(verifyReceiptEnvelope(load('receipt'), unknown).state, 'UNVERIFIABLE')
+  const bundle = verifyBundle(await json(new URL('bundle-with-artifacts.json', conformance)), policy)
+  assert.ok(bundle.components.some((item) => item.component === 'receipt-proof' && item.state === 'VALID'))
 })

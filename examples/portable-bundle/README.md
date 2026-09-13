@@ -83,11 +83,9 @@ just the worst of them. See
   already carried. Here the assembler is a public test key, which no one
   should trust for anything.
 
-Note also that the in-bundle receipt check is weaker than the dedicated
-`verifyReceiptEnvelope`, which additionally pins the attestation purpose and
-recomputes `receipt_digest`/`receipt_id` (`docs/AGENT_EVIDENCE_V0.md` section
-14.6). On success, the embedded receipt's proof currently surfaces under the
-component name `source-proof`, not `receipt-proof`.
+The in-bundle receipt check uses the same dedicated `verifyReceiptEnvelope`
+contract: it pins the attestation purpose, recomputes
+`receipt_digest`/`receipt_id`, and surfaces the result as `receipt-proof`.
 
 See the other D4.2 conformance fixtures in
 [`spec/agent-evidence/v0/conformance/`](../../spec/agent-evidence/v0/conformance/README.md)

@@ -36,6 +36,12 @@ export interface CreateBundlePayloadOptions {
   createdAt: string | Date
   runId?: string
   rootIds?: readonly string[]
+  /** Asserted bundle assembler identity. This is not a signing trust root. */
+  issuer?: string
+  /** Existing v0 reconciliation summary; every record reference is validated. */
+  reconciliation?: JsonObject
+  /** Publisher-asserted limitations retained separately from proof results. */
+  limitations?: readonly string[]
   extensions?: JsonObject
 }
 
@@ -54,18 +60,28 @@ export function createBundlePayload(
   const withoutId = {
     bundle_version: BUNDLE_VERSION,
     created_at: createdAt,
+    ...(options.issuer === undefined ? {} : { issuer: options.issuer }),
     run_id: runId,
     root_ids: [...(options.rootIds ?? computedRoots)],
     records,
+    ...(options.reconciliation === undefined ? {} : {
+      reconciliation: cloneJson(options.reconciliation as JsonValue) as JsonObject,
+    }),
+    ...(options.limitations === undefined ? {} : {
+      limitations: cloneJson([...options.limitations] as JsonValue) as string[],
+    }),
     extensions: cloneJson((options.extensions ?? {}) as JsonValue) as JsonObject,
   }
   const payload: BundlePayload = {
     bundle_version: BUNDLE_VERSION,
     bundle_id: contentId(withoutId),
     created_at: createdAt,
+    ...(withoutId.issuer === undefined ? {} : { issuer: withoutId.issuer }),
     run_id: runId,
     root_ids: withoutId.root_ids,
     records,
+    ...(withoutId.reconciliation === undefined ? {} : { reconciliation: withoutId.reconciliation }),
+    ...(withoutId.limitations === undefined ? {} : { limitations: withoutId.limitations }),
     extensions: withoutId.extensions,
   }
   validateBundlePayload(payload)

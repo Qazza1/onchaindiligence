@@ -30,12 +30,14 @@ from .errors import (
 from .graph import validate_bundle_payload
 from .models import (
     ArtifactVerification,
+    BundleIntegrityVerification,
     ComponentResult,
     JsonObject,
     VerificationReport,
     VerificationState,
     overall_state,
 )
+from .receipts import verify_receipt_envelope
 from .schema import validate_document
 from .trust import AttestationKey, TrustPolicy, evaluate_key_lifecycle
 
@@ -74,9 +76,13 @@ def _report(
     return VerificationReport(
         state=overall_state(components),
         components=tuple(components),
-        bundle_integrity=overall_state(integrity_components),
+        bundle_integrity=BundleIntegrityVerification(
+            state=overall_state(integrity_components), components=tuple(integrity_components)
+        ),
         artifact_verifications=artifacts,
         bundle_id=payload.get("bundle_id") if payload is not None else None,
+        reconciliation=payload.get("reconciliation") if payload is not None else None,
+        limitations=tuple(payload.get("limitations", [])) if payload is not None else (),
         payload=payload,
     )
 
@@ -379,17 +385,15 @@ def _verify_record_proofs(
                             )
                         )
                     else:
+                        verified = verify_receipt_envelope(receipt_envelope, policy)
                         components.append(
-                            _verify_attestation_proof(
-                                {
-                                    "proof_type": "onchaindiligence-attestation-v2",
-                                    "envelope": {
-                                        "data": receipt_envelope["receipt"],
-                                        "attestation": receipt_envelope["proof"],
-                                    },
-                                },
-                                policy,
-                                record_id,
+                            _result(
+                                "receipt-proof",
+                                verified.state,
+                                verified.code,
+                                verified.message,
+                                key_id=verified.key_id,
+                                record_id=record_id,
                             )
                         )
             elif proof_type in {
@@ -562,16 +566,18 @@ def _verify_evidence_semantics(
     return components
 
 
-_RECOGNIZED_EVIDENCE_FAMILIES = {
-    "sanctions-screen",
-    "us-public-company-record",
-    "technocore-signed-message",
-    "tclk-transcript",
-    "recipient-binding-check",
-    "recipient-check",
-    "interop-fixture",
-    "onchaindiligence.public-action-receipt.v1",
-}
+_RECOGNIZED_EVIDENCE_FAMILIES = frozenset(
+    {
+        "sanctions-screen",
+        "us-public-company-record",
+        "technocore-signed-message",
+        "tclk-transcript",
+        "recipient-binding-check",
+        "recipient-check",
+        "interop-fixture",
+        "onchaindiligence.public-action-receipt.v1",
+    }
+)
 
 
 def _verify_artifact_families(payload: JsonObject) -> list[ComponentResult]:
@@ -601,7 +607,17 @@ def _verify_reconciliation_references(payload: JsonObject) -> list[ComponentResu
     components: list[ComponentResult] = []
     for group in ("agreements", "contradictions", "insufficient_evidence"):
         for entry in reconciliation[group]:
-            for record_id in entry.get("record_ids", []):
+            references = entry.get("record_ids", [])
+            if group == "contradictions" and len(set(references)) < 2:
+                components.append(
+                    _result(
+                        "reconciliation",
+                        VerificationState.INVALID,
+                        "contradiction-records-insufficient",
+                        "a reconciliation contradiction must reference at least two distinct records",
+                    )
+                )
+            for record_id in references:
                 if record_id not in record_ids:
                     components.append(
                         _result(
