@@ -345,6 +345,7 @@ const unknownEvidence = record('evidence', [run.id], {
 function buildBundlePayload(evidenceRecords) {
   const allRecords = [principal, agent, mandate, run, ...evidenceRecords].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   const rootIds = evidenceRecords.map((r) => r.id).sort()
+  const agreementRecordIds = evidenceRecords.map((r) => r.id).sort()
   const payloadWithoutId = {
     bundle_version: 'onchaindiligence.agent-evidence.bundle.v0',
     created_at: '2026-08-28T12:00:06.000Z',
@@ -356,7 +357,7 @@ function buildBundlePayload(evidenceRecords) {
       agreements: [
         {
           subject: 'sanctions-screen-agrees-with-allowance-preflight-policy',
-          record_ids: [screeningEvidence.id, receiptEvidence.id].sort(),
+          record_ids: agreementRecordIds,
           summary: 'The sanctions screen found no match for the counterparty, and the allowance preflight independently reached ALLOW under its own policy -- both checks agree the proposed action is not blocked by either evidence source.',
         },
       ],

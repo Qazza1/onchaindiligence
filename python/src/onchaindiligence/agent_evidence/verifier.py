@@ -61,9 +61,7 @@ def _report(
     payload: JsonObject | None = None,
 ) -> VerificationReport:
     integrity_components = [
-        item
-        for item in components
-        if item.component in {"outer", "bundle-signature", "payload", "graph"}
+        item for item in components if item.component in {"outer", "bundle-signature", "payload", "graph"}
     ]
     artifacts = tuple(
         ArtifactVerification(
@@ -366,7 +364,11 @@ def _verify_record_proofs(
                     and response["mode"] == "embedded"
                 ):
                     receipt_envelope = response["value"]
-                    if not isinstance(receipt_envelope, dict) or not isinstance(receipt_envelope.get("receipt"), dict) or not isinstance(receipt_envelope.get("proof"), dict):
+                    if (
+                        not isinstance(receipt_envelope, dict)
+                        or not isinstance(receipt_envelope.get("receipt"), dict)
+                        or not isinstance(receipt_envelope.get("proof"), dict)
+                    ):
                         components.append(
                             _result(
                                 "receipt-proof",
@@ -381,7 +383,10 @@ def _verify_record_proofs(
                             _verify_attestation_proof(
                                 {
                                     "proof_type": "onchaindiligence-attestation-v2",
-                                    "envelope": {"data": receipt_envelope["receipt"], "attestation": receipt_envelope["proof"]},
+                                    "envelope": {
+                                        "data": receipt_envelope["receipt"],
+                                        "attestation": receipt_envelope["proof"],
+                                    },
                                 },
                                 policy,
                                 record_id,

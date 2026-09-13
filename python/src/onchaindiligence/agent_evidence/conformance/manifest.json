@@ -108,23 +108,23 @@
       "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
       "expected": "INVALID",
       "reason": "child-signature-invalid",
-      "note": "Sealed AFTER corrupting one embedded attestation-v2 signature, so the bundle's own DSSE signature is genuinely valid over its exact (tampered-child) content -- only the child's own source-proof component fails (signature-invalid / trust-proof-invalid). IMPORTANT: verify_bundle() today folds this into a single overall INVALID state; it does not yet report bundle-level DSSE integrity and per-artifact verification as visibly separate results. This fixture is deliberately kept in the corpus to document that known gap (see AGENT_EVIDENCE_V0.md section 14 and the D4.2 Codex implementation plan) -- 'expected' reflects verify_bundle()'s actual current behavior, not the target per-artifact model."
+      "note": "Sealed AFTER corrupting one embedded attestation-v2 signature, so the bundle's own DSSE signature is genuinely valid over its exact (tampered-child) content. The child is INVALID while bundle_integrity remains VALID; the convenience overall state is INVALID."
     },
     {
       "id": "bundle-unverifiable-child",
       "fixture": "bundle-unverifiable-child.json",
       "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
-      "expected": "INVALID",
+      "expected": "UNVERIFIABLE",
       "reason": "child-key-not-trusted",
-      "note": "One embedded attestation-v2 artifact is correctly signed but by a key (ed25519-Q1DbiLlrVjWZN1Gg) this fixture's own verification_material does not include and the case does not add to trusted_key_ids -- key-not-trusted / trust-proof-unverifiable for that child. Same collapsing caveat as bundle-invalid-child: today this makes the WHOLE bundle UNVERIFIABLE rather than surfacing a separate per-child result."
+      "note": "One embedded attestation-v2 artifact is correctly signed but by a key (ed25519-Q1DbiLlrVjWZN1Gg) this fixture's own verification_material does not include and the case does not add to trusted_key_ids. The child is UNVERIFIABLE while bundle_integrity remains VALID; the convenience overall state is UNVERIFIABLE."
     },
     {
       "id": "bundle-unknown-artifact-type",
       "fixture": "bundle-unknown-artifact-type.json",
       "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
-      "expected": "INVALID",
+      "expected": "UNVERIFIABLE",
       "reason": "unknown-artifact-graph-bound-only",
-      "note": "A well-formed evidence record (schema 'onchaindiligence.some-future-action.v9') this verifier does not recognize, embedded via external-digest with trust_mode agent-assertion. verify_bundle() today reports this VALID at the graph level (digest-bound, no source-attribution claim made) rather than UNVERIFIABLE. This is an intentionally documented gap against the D4.2 spec's stated goal that an unknown-but-well-formed artifact type should normally become UNVERIFIABLE, not silently pass -- see the Codex implementation plan in AGENT_EVIDENCE_V0.md section 14 for the recommended fix (an explicit artifact-family recognition check, additive to the existing graph-binding check)."
+      "note": "A well-formed evidence record (schema 'onchaindiligence.some-future-action.v9') this verifier does not recognize, embedded via external-digest with trust_mode agent-assertion. The child is UNVERIFIABLE while bundle_integrity remains VALID; the convenience overall state is UNVERIFIABLE."
     }
   ]
 }

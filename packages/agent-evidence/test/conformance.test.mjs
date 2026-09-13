@@ -103,9 +103,11 @@ test('D4.2 keeps outer integrity separate from every artifact result', async () 
   ]) {
     const report = verifyBundle(await json(new URL(fixture, conformance)), policy)
     assert.equal(report.bundle_integrity.state, 'VALID', fixture)
+    assert.equal(report.state, expected, fixture)
     assert.ok(report.artifact_verifications.some((item) => item.state === expected), fixture)
   }
   const unknown = verifyBundle(await json(new URL('bundle-unknown-artifact-type.json', conformance)), policy)
   assert.equal(unknown.bundle_integrity.state, 'VALID')
+  assert.equal(unknown.state, 'UNVERIFIABLE')
   assert.ok(unknown.artifact_verifications.some((item) => item.state === 'UNVERIFIABLE'))
 })

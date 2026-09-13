@@ -135,15 +135,7 @@ def test_bundle_with_optional_d42_fields_is_valid_and_populated() -> None:
 
 
 def test_bundle_integrity_and_per_artifact_verification_are_separated() -> None:
-    """Pins today's documented gap (AGENT_EVIDENCE_V0.md section 14.3): a
-    bundle whose outer DSSE signature is genuinely valid over its exact
-    (tampered-child) content still reports overall INVALID/UNVERIFIABLE,
-    because per-record proof failures are not yet reported separately from
-    bundle integrity. This test should be updated, not deleted, once the
-    Codex plan's item 2 (bundle_integrity vs artifact_verifications[]) ships
-    -- at that point it should assert bundle_integrity is VALID *alongside*
-    a distinct non-VALID artifact_verifications[] entry.
-    """
+    """A valid outer bundle seal does not hide a non-VALID child artifact."""
     policy = trusted_policy(load_json(CORPUS / "valid-full-graph.json"))
 
     invalid_child = load_json(CORPUS / "bundle-invalid-child.json")
@@ -158,19 +150,16 @@ def test_bundle_integrity_and_per_artifact_verification_are_separated() -> None:
     unverifiable_child = load_json(CORPUS / "bundle-unverifiable-child.json")
     report = verify_bundle(unverifiable_child, policy)
     assert report.bundle_integrity is VerificationState.VALID
-    assert report.state is VerificationState.INVALID
+    assert report.state is VerificationState.UNVERIFIABLE
     assert any(item.state is VerificationState.UNVERIFIABLE for item in report.artifact_verifications)
     assert any(c.code == "key-not-trusted" for c in report.components)
 
 
 def test_unknown_artifact_family_is_flagged_unverifiable() -> None:
-    """Pins today's documented gap (AGENT_EVIDENCE_V0.md section 14.4): a
-    well-formed evidence record of an unrecognized schema, embedded via
-    external-digest, verifies VALID today rather than UNVERIFIABLE. Update
-    this test (expected -> UNVERIFIABLE) once Codex plan item 3 ships.
-    """
+    """An unrecognized but graph-bound artifact is never silently valid."""
     policy = trusted_policy(load_json(CORPUS / "valid-full-graph.json"))
     unknown = load_json(CORPUS / "bundle-unknown-artifact-type.json")
     report = verify_bundle(unknown, policy)
     assert report.bundle_integrity is VerificationState.VALID
+    assert report.state is VerificationState.UNVERIFIABLE
     assert any(item.state is VerificationState.UNVERIFIABLE for item in report.artifact_verifications)

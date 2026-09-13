@@ -237,7 +237,7 @@ test('corpus isolates signature, canonicalization, graph, version, trust, and pa
     'bundle-inserted-artifact': 'INVALID',
     'bundle-invalid-child': 'INVALID',
     'bundle-unverifiable-child': 'UNVERIFIABLE',
-    'bundle-unknown-artifact-type': 'VALID',
+    'bundle-unknown-artifact-type': 'UNVERIFIABLE',
   }
   assert.deepEqual(
     new Set(manifest.cases.map(({ id }) => id)),
