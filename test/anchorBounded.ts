@@ -4,6 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import { generateKeyPairSync } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
 import { once } from 'node:events'
 
@@ -20,6 +21,10 @@ process.env.ANCHOR_RPC_URL = 'http://127.0.0.1:18546'
 process.env.ANCHOR_CHAIN_ID = '42431'
 process.env.ANCHOR_CONTRACT_ADDRESS = '0x1111111111111111111111111111111111111111'
 process.env.ANCHOR_PRIVATE_KEY = `0x${'11'.repeat(32)}`
+
+const serverSource = readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8')
+assert.doesNotMatch(serverSource, /c\.req\.raw\.clone\(\)\.text\(\)/)
+assert.match(serverSource, /const rawBody = await c\.req\.text\(\)/)
 
 const { getRequestListener } = await import('@hono/node-server')
 const { default: app } = await import('../src/server.js')
