@@ -529,6 +529,28 @@ artifact shape actually is:
   used `trust_mode: "publisher-signed"` for a receipt embedded via
   `external-digest` and the reference verifier correctly rejected it
   (`cryptographic-proof-missing`).
+
+  A second, separate defect was caught the same way, one layer deeper: a
+  receipt's own internal `proof` (independent of the outer graph proof above)
+  must be `receiptAttestationSigningInput`'s exact contract
+  (`packages/agent-evidence/src/receipts.ts`) -- RFC 8785 canonical JSON over
+  `{schema_version, issuer, purpose, data, issued_at, key_id}` where `data` is
+  the **full finalized receipt** (i.e. including `receipt_id`/`receipt_digest`,
+  never the pre-digest core), `issuer` is `PUBLIC_ACTION_RECEIPT_ISSUER`
+  (`https://api.onchaindiligence.com`), and `purpose` is exactly
+  `PUBLIC_ACTION_RECEIPT_PURPOSE` (`"public-action-receipt"`) -- **not** the
+  receipt's own underlying action kind (`erc20-allowance-action`, etc.; that
+  string is the purpose used for signing the *evidence-node's own*
+  `onchaindiligence-attestation-v2` artifacts elsewhere in this bundle, a
+  different signing site entirely). An earlier committed fixture signed the
+  pre-digest core under the wrong purpose and used a hand-picked, non-digest
+  -derived `receipt_id` -- `verifyReceiptEnvelope`'s real digest/id-recompute
+  and `verifyAttestationV2`'s real purpose/signature checks (both unmodified,
+  `packages/agent-evidence/src/receipts.ts` and `attestationV2.ts`) correctly
+  caught this before merge. The fixture generator (`generate.mjs`) now derives
+  `receipt_id` from `receipt_digest` via the same Crockford Base32 encoding as
+  `receiptId.ts::formatReceiptId`, and signs the full finalized receipt under
+  the correct purpose.
 - No standalone "provider evidence" or "settlement/payment evidence" artifact
   schema exists in the current codebase (confirmed by inspection of
   `onchaindiligence-mcp/src/providerEvidence.ts`). That evidence is only

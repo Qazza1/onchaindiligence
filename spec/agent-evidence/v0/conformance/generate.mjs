@@ -38,6 +38,30 @@ function digestObject(value) {
   return { sha256: digest(value) }
 }
 
+// Mirrors packages/agent-evidence/src/receiptId.ts::formatReceiptId exactly
+// (Crockford Base32 over the first 10 digest bytes) so a fixture receipt_id
+// is genuinely derivable from receipt_digest, not a fabricated placeholder --
+// a real verifier recomputes and compares this, so a mismatch is INVALID.
+const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+function formatReceiptId(receiptDigest) {
+  const match = /^sha256:([A-Za-z0-9_-]{43})$/.exec(receiptDigest)
+  if (!match) throw new Error(`not a valid sha256 content id: ${receiptDigest}`)
+  const bytes = Buffer.from(match[1], 'base64url').subarray(0, 10)
+  let bits = 0, value = 0, output = ''
+  for (const byte of bytes) {
+    value = (value << 8) | byte
+    bits += 8
+    while (bits >= 5) {
+      bits -= 5
+      output += CROCKFORD_ALPHABET[(value >> bits) & 0x1f]
+    }
+  }
+  if (bits > 0) output += CROCKFORD_ALPHABET[(value << (5 - bits)) & 0x1f]
+  const groups = []
+  for (let i = 0; i < output.length; i += 4) groups.push(output.slice(i, i + 4))
+  return `OCD-RCP-${groups.join('-')}`
+}
+
 const principal = record('principal', [], {
   principal_id: 'urn:onchaindiligence:test:treasury',
   principal_type: 'organization',
@@ -248,8 +272,11 @@ const screeningEvidence = record('evidence', [run.id], {
 // verifiable by a receipt-aware verifier, a step this v0 graph proof does
 // not itself perform; see the D4.2 note on this distinction).
 const receiptIssuedAt = '2026-08-28T12:00:03.000Z'
-const receiptCore = {
-  receipt_id: 'OCD-RCP-CNFM-0000-0000-0001',
+// Exactly packages/agent-evidence/src/receipts.ts's ReceiptCoreFields -- every
+// receipt field EXCEPT receipt_id/receipt_digest, which are DERIVED from this
+// object's own digest below, never supplied by hand (receiptId.ts's own
+// comment: "the id is derived from the digest, never the reverse").
+const receiptCoreFields = {
   receipt_type: 'PREFLIGHT',
   issued_at: receiptIssuedAt,
   action: { kind: 'ERC20_ALLOWANCE', resource: null, network: 'eip155:8453', asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', amount: '1.00', sender: '0x' + '44'.repeat(20), recipient: null },
@@ -260,11 +287,20 @@ const receiptCore = {
   links: { agent_evidence_bundle_digest: null, preflight_receipt_id: null },
   limitations: ['Policy evaluation only -- OCD never holds, moves, or authorizes funds.'],
 }
-const receiptDigest = `sha256:${digest(receiptCore)}`
-const receiptProof = signV2(privateKey, keyId, receiptCore, 'erc20-allowance-action', receiptIssuedAt).attestation
+const receiptDigest = `sha256:${digest(receiptCoreFields)}`
+const receiptId = formatReceiptId(receiptDigest)
+// finalizeReceiptCore's exact output: core fields + the id/digest just derived.
+const finalizedReceipt = { ...receiptCoreFields, receipt_id: receiptId, receipt_digest: receiptDigest }
+// receiptAttestationSigningInput signs the FULL finalized receipt (data:
+// receipt, including receipt_id/receipt_digest) under purpose
+// PUBLIC_ACTION_RECEIPT_PURPOSE = 'public-action-receipt' -- NOT the
+// underlying action kind. An earlier draft signed the pre-digest core under
+// purpose 'erc20-allowance-action' and was caught by verifyReceiptEnvelope's
+// real purpose-mismatch / signature-invalid checks before merge.
+const receiptProof = signV2(privateKey, keyId, finalizedReceipt, 'public-action-receipt', receiptIssuedAt).attestation
 const receipt = {
   schema: 'onchaindiligence.public-action-receipt.v1',
-  receipt: { ...receiptCore, receipt_digest: receiptDigest },
+  receipt: finalizedReceipt,
   proof: receiptProof,
 }
 const receiptEvidence = record('evidence', [run.id], {
@@ -280,11 +316,11 @@ const receiptEvidence = record('evidence', [run.id], {
   trust_mode: 'agent-assertion',
   source: { id: 'https://api.onchaindiligence.com', type: 'https-api' },
   tool: { name: 'erc20_allowance_preflight', version: '1' },
-  request: { digest: digestObject({ asset: receiptCore.action.asset }), media_type: 'application/json' },
+  request: { digest: digestObject({ asset: receiptCoreFields.action.asset }), media_type: 'application/json' },
   response: { mode: 'embedded', media_type: 'application/json', value: receipt, digest: digestObject(receipt) },
   observed_at: receiptIssuedAt,
   expires_at: null,
-  scope: { query: receiptCore.action.asset, coverage: 'one preflight artifact' },
+  scope: { query: receiptCoreFields.action.asset, coverage: 'one preflight artifact' },
 }, [{ proof_type: 'external-digest', media_type: 'onchaindiligence.public-action-receipt.v1', digest: digestObject(receipt) }])
 
 // A well-formed evidence node whose artifact family the verifier does not
