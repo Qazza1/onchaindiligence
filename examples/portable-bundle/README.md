@@ -49,26 +49,27 @@ python -m onchaindiligence.agent_evidence.cli verify \
   --now 2026-08-28T12:01:00.000Z
 ```
 
-Exits `0` with overall `VALID`, fully offline (no network access). Per the
-D4.2 audit in [`docs/AGENT_EVIDENCE_V0.md`](../../docs/AGENT_EVIDENCE_V0.md)
-section 14, this single overall `VALID` is bundle-level integrity plus every
-per-record proof check folded into one result -- it is **not yet** the
-separate `bundle_integrity` / `artifact_verifications[]` shape described in
-that section, which is scoped to Codex's core verifier work, not this example.
+Exits `0` with overall `VALID`, fully offline (no network access). The report
+also carries `bundle_integrity` (the outer seal, canonical payload and graph
+only) and `artifact_verifications[]` (one visible tri-state per record)
+side by side -- read those rather than the single overall `state`, which is
+just the worst of them. See
+[`docs/AGENT_EVIDENCE_V0.md`](../../docs/AGENT_EVIDENCE_V0.md) section 14.3.
 
 ## What this bundle proves, and what it does not
 
 - It proves: the exact manifest and artifact inventory embedded here were
-  sealed together by the holder of `ed25519-3rLe053Cb84OYIW2` (a test key),
-  and the embedded `onchaindiligence-attestation-v2` screening result's own
-  signature independently verifies.
-- It does **not** prove: that the embedded receipt was independently
-  re-verified by this bundle proof (it is digest-bound only -- its own
-  internal `receipt.proof` is a real, separately verifiable v2 attestation,
-  but checking it is receipt-aware verification this bundle proof does not
-  itself perform); that any action was authorized, safe, settled, delivered,
-  compliant, or economically sound; or anything about a real wallet, company,
-  or transaction -- every identifier here is synthetic test material.
+  sealed together by the holder of `ed25519-3rLe053Cb84OYIW2` (a test key);
+  the embedded `onchaindiligence-attestation-v2` screening result's own
+  signature independently verifies; and the embedded receipt's own internal
+  `receipt.proof` independently verifies as a separate artifact result.
+- It does **not** prove: that any action was authorized, safe, settled,
+  delivered, compliant, or economically sound; or anything about a real
+  wallet, company, or transaction -- every identifier here is synthetic test
+  material. Note also that the in-bundle receipt check is weaker than the
+  dedicated `verifyReceiptEnvelope`, which additionally pins the attestation
+  purpose and recomputes `receipt_digest`/`receipt_id`
+  (`docs/AGENT_EVIDENCE_V0.md` section 14.6).
 
 See the other D4.2 conformance fixtures in
 [`spec/agent-evidence/v0/conformance/`](../../spec/agent-evidence/v0/conformance/README.md)

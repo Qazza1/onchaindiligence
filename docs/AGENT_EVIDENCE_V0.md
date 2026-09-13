@@ -566,33 +566,35 @@ artifact shape actually is:
 reference back to a containing bundle by digest -- this bundle design is the
 intended container, not a new parallel one.
 
-### 14.3 Bundle vs. child verification (and today's actual gap)
+### 14.3 Bundle vs. child verification
 
-The task goal is to keep two results visibly distinct: (1) bundle integrity
+The goal is to keep two results visibly distinct: (1) bundle integrity
 (does the outer DSSE signature cover the exact manifest and artifact
 inventory, unmodified) and (2) each embedded artifact's own verification
 result (VALID / INVALID / UNVERIFIABLE). A cryptographically valid bundle must
 never be reported in a way that implies every embedded artifact is valid.
 
-**Today's `verify_bundle()` / `verifyBundle()` do not yet separate these.**
-Both aggregate every component -- outer DSSE check, graph check, and every
-per-record proof check -- into one `overall_state` via a single precedence
-rule (`models.py::overall_state`: any required `INVALID` wins, else any
-`UNVERIFIABLE` wins, else `VALID`). This was verified directly, not asserted:
-the `bundle-invalid-child` fixture is sealed *after* corrupting one embedded
-attestation signature, so its outer DSSE signature is genuinely valid over its
-exact (tampered) content -- yet `verify_bundle()` reports the whole bundle
-`INVALID`, because the corrupted child's `source-proof` component is required
-and INVALID. Symmetrically, `bundle-unverifiable-child` (one artifact signed
-by a key outside the caller's trust set) makes the whole bundle
-`UNVERIFIABLE`, not just that one artifact.
+**Implemented.** A verification report now carries three things side by side:
 
-This is an honest, code-verified gap, not a hypothetical one -- see 14.7 for
-the recommended fix. Every other bundle-tamper fixture in this pass (tampered
-manifest, removed artifact, inserted artifact) already gets the correct
-`INVALID` result today, because those failures live entirely in the DSSE/graph
-layer that `overall_state` already isolates correctly when no per-child proof
-is also failing.
+- `bundle_integrity` -- aggregated over the `outer`, `bundle-signature`,
+  `payload` and `graph` components only. Per-record results can never raise or
+  lower it.
+- `artifact_verifications[]` -- one entry per record in the bundle, each with
+  its own `record_id`, tri-state `state`, and the components behind it.
+- `state` -- a convenience aggregate over everything, kept so existing callers
+  and the tri-state conformance corpus keep working. It is deliberately the
+  *worst* of all results, so it stays fail-closed.
+
+`bundle-invalid-child` and `bundle-unverifiable-child` are the regression
+fixtures: both are sealed so the outer DSSE signature is genuinely valid over
+their exact content, and both now report `bundle_integrity: VALID` alongside a
+distinct `INVALID` / `UNVERIFIABLE` entry in `artifact_verifications[]`. A
+valid outer seal no longer hides a non-VALID child, and a non-VALID child no
+longer implies the bundle was tampered with.
+
+Every bundle-tamper fixture (tampered manifest, removed artifact, inserted
+artifact) still reports `bundle_integrity: INVALID`, because those failures
+live in the DSSE/graph layer itself.
 
 ### 14.4 Unknown artifact types
 
@@ -606,15 +608,24 @@ worse than any tri-state outcome and exactly the "silently trusted" failure
 mode this task warns against.
 
 What CAN vary is the artifact's own *content family* (`evidence_type`, or an
-embedded object's own `schema` field) -- a free-form string the verifier's
-proof-type dispatch never inspects. The `bundle-unknown-artifact-type` fixture
-confirms today's actual behavior: a well-formed record of schema
-`onchaindiligence.some-future-action.v9`, embedded via `external-digest`,
-verifies `VALID` (graph-bound, no source-attribution claim -- which is true as
-far as it goes). It does **not** become `UNVERIFIABLE` for being an
-unrecognized family, which is the outcome this task asked for
-("unknown-but-well-formed artifact type should normally become
-UNVERIFIABLE, not silently trusted"). See 14.7 for the recommended fix.
+embedded object's own `schema` field) -- a free-form string the proof-type
+dispatch itself never inspects. **Implemented:** an explicit artifact-family
+check now runs alongside (not instead of) the existing graph-binding check.
+An evidence record whose `evidence_type` is outside the verifier's recognized
+set gets an `artifact-family` / `unknown-artifact-family` component at
+`UNVERIFIABLE`, so it surfaces as an unverifiable artifact rather than
+silently passing on its digest binding alone. The
+`bundle-unknown-artifact-type` fixture is the regression case: its
+`bundle_integrity` stays `VALID` (the record really is bound by the seal)
+while the artifact itself reports `UNVERIFIABLE`.
+
+The recognized-family set is maintained independently in
+`verifier.py::_RECOGNIZED_EVIDENCE_FAMILIES` and
+`verifier.ts::RECOGNIZED_EVIDENCE_FAMILIES`. These are two hand-maintained
+copies with no shared source and no drift check -- unlike the schemas and the
+conformance corpus, which are synced by `sync-assets.mjs` and guarded in CI.
+Adding a family to one language and not the other produces cross-language
+disagreement on the same bundle; keep them in step.
 
 ### 14.5 Size / safety bounds
 
@@ -644,28 +655,59 @@ per-artifact recognition layer exists.
 
 ### 14.6 What is schema-conformant today vs. behaviorally verified today
 
-Every fixture in `spec/agent-evidence/v0/conformance/bundle-*.json` was
-validated against the REAL Python reference `verify_bundle()`
-(`onchaindiligence-agent-evidence==0.1.0`, editable-installed from this
-repository) -- not asserted by hand. But two things are schema-conformant only,
-not behaviorally checked by any current verifier:
+Every fixture in `spec/agent-evidence/v0/conformance/bundle-*.json` is
+validated against the REAL Python reference `verify_bundle()` and the REAL
+TypeScript `verifyBundle()` -- not asserted by hand. What each field is and is
+not actually checked for, as of the D4.2 core landing:
 
-- `reconciliation` and `limitations` content is inert data to
-  `verify_bundle()` today. The verifier does not check that
-  `reconciliation.agreements[].record_ids` actually resolve to records in the
-  bundle, does not check that a `contradictions` entry actually cites
-  disagreeing records, and does not check `limitations` wording. Schema
-  validation enforces shape (required sub-fields, cardinality caps); it does
-  not enforce the semantic rules stated in each field's own schema
-  description. This is a real, disclosed gap for 14.7.
-- A `public-action-receipt.v1` embedded via `external-digest` is bound into
-  the graph by digest, but its own internal `receipt.proof` (a real, correctly
-  formed v2 attestation) is never independently verified by the v0 graph
-  verifier. `bundle-with-artifacts.json`'s receipt is genuinely, correctly
-  signed, but that fact is not what makes the fixture's overall result VALID
-  -- graph/digest binding is what makes it VALID.
+- `reconciliation.*.record_ids` **are** now resolved: every referenced id must
+  name a record present in the same bundle, or the bundle reports
+  `reconciliation-record-missing` / INVALID. What is still NOT enforced is the
+  stronger semantic rule stated in the field's own schema description -- that a
+  `contradictions` entry requires at least two referenced records whose
+  statements actually disagree. A single-record "contradiction" still passes.
+- `limitations` content remains inert data. Nothing checks its wording, and
+  nothing should: it is a publisher assertion, not a verifiable claim.
+- A `public-action-receipt.v1` embedded via `external-digest` **does** now get
+  its own internal `receipt.proof` verified as a separate component, in both
+  languages. Two caveats, verified empirically against the shipped code:
+  1. The bundle path routes that proof through the generic attestation
+     verifier, which accepts any purpose in the production allowlist. The
+     dedicated `verifyReceiptEnvelope` pins `purpose` to exactly
+     `public-action-receipt`. A receipt whose proof declares, say,
+     `swap-action` is therefore accepted inside a bundle and rejected by
+     `verifyReceiptEnvelope` (`purpose-mismatch`).
+  2. The bundle path does not recompute `receipt_digest` / `receipt_id`;
+     `verifyReceiptEnvelope` does. A receipt that is correctly signed but
+     internally inconsistent passes the bundle path and fails
+     `verifyReceiptEnvelope` (`digest-mismatch`).
 
-### 14.7 Codex implementation plan (not implemented in this pass)
+  Neither is forgeable without the signing key -- the signature still covers
+  the whole receipt -- but both mean the bundle path is a weaker statement
+  about a receipt than the dedicated receipt verifier, and the two can
+  disagree about the same artifact. Treat `verifyReceiptEnvelope` as
+  authoritative for receipts until the bundle path pins the purpose and
+  recomputes the digest.
+- The success-path component for an embedded receipt's own proof is currently
+  emitted as `source-proof`, not `receipt-proof` (the generic attestation
+  verifier hardcodes its own component name). The `receipt-proof` label only
+  appears on the missing-proof error path, so a consumer reading `components`
+  cannot yet tell a record's own `external-digest` proof apart from the
+  embedded receipt's internal attestation proof.
+
+### 14.7 Core implementation plan -- status
+
+Items 1-5 below **have landed** in both the Python and TypeScript reference
+implementations; the plan text is kept as the record of what was asked for and
+why. Item 6 (CLI/API/SDK integration) has **not** landed: no published surface
+can create or verify a bundle yet. Two follow-ups opened by the landing itself
+are tracked in 14.6 -- the receipt purpose/digest divergence, and the
+`receipt-proof` component mislabel -- plus one producer-side gap: the supported
+producer API (`createBundlePayload`) still cannot emit `issuer`,
+`reconciliation` or `limitations`, so the only way to build a bundle carrying
+the D4.2 fields today is to assemble the payload object by hand, as
+`generate.mjs` does. A verifier that checks fields no supported producer can
+write is a real asymmetry, not a cosmetic one.
 
 In priority order, each independently shippable and independently testable
 against the existing conformance corpus:

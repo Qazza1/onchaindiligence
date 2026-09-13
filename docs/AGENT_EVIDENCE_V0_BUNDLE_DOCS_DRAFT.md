@@ -1,13 +1,19 @@
 # Portable evidence bundle docs -- DRAFT wording (D4.2 integration/UX prep)
 
-**Status: draft only. Do not publish to onchaindiligence.com/onchaindilige-site
-until Codex's core verifier work (`docs/AGENT_EVIDENCE_V0.md` section 14.7)
-ships** -- specifically items 1-2 (broadened attestation purposes,
-`bundle_integrity` / `artifact_verifications[]` separation). Publishing this
-wording before then would describe a distinction (bundle-valid-but-child-
-invalid staying visible) that today's `verify_bundle()` does not actually
-make -- see section 14.3. This file exists so the exact copy is ready the
-moment that lands, not to be shipped now.
+**Status: the core-verifier gate has LIFTED.** Section 14.7 items 1-5 have
+landed in both reference implementations: broadened attestation purposes,
+`bundle_integrity` / `artifact_verifications[]` separation, unknown-artifact-
+family UNVERIFIABLE, embedded-receipt proof verification, and reconciliation
+reference resolution. The five paragraphs below are now accurate statements
+about the shipped verifiers.
+
+**Still do not publish yet**, for a different reason than before: no published
+surface can create or verify a bundle. The CLI has no bundle path, the SDK
+exports no bundle verification, and `createBundlePayload` cannot emit the
+`issuer` / `reconciliation` / `limitations` fields this copy describes. Copy
+that tells a reader "you can verify a bundle offline" should ship in the same
+change that gives them a command to do it -- see section 6 of the D4.2
+integration/UX report for the remaining wiring.
 
 Each block below is written as end-user-facing prose, sized for the
 `docs.html` "Offline verification" section (D4.1) or a future dedicated
@@ -68,15 +74,16 @@ bundle section next to it.
 
 ## Implementation note for whoever publishes this
 
-The "Outer bundle validity vs. child validity" and "Unknown artifact
-handling" paragraphs describe the *target* behavior specified in
-`docs/AGENT_EVIDENCE_V0.md` section 14, not what `verify_bundle()` /
-`verifyBundle()` do today (section 14.3, 14.4: both currently collapse into
-one aggregate state, and an unrecognized-but-well-formed artifact type
-currently reports VALID, not UNVERIFIABLE). Ship these two paragraphs only
-once Codex's core work lands; "What a bundle proves" / "does not prove" /
-"Offline verification" are already accurate today at the single-artifact
-level (D4.1) and become accurate at the bundle level as soon as
-`bundle-payload.schema.json`'s D4.2 additions have any real producer, which is
-also gated on Codex's `createBundlePayload` update (see the main D4.2
-integration/UX report, section 6).
+All five paragraphs now match shipped verifier behavior, including "Outer
+bundle validity vs. child validity" (section 14.3, `bundle_integrity` +
+`artifact_verifications[]`) and "Unknown artifact handling" (section 14.4,
+`unknown-artifact-family` → UNVERIFIABLE), which were the two previously
+blocked on core work.
+
+One accuracy caveat to carry into whatever ships: the "What a bundle proves"
+paragraph says each embedded artifact "can be verified on its own." That is
+true, but for a `public-action-receipt.v1` the dedicated
+`verifyReceiptEnvelope` is stricter than the in-bundle check (it pins the
+attestation purpose and recomputes `receipt_digest`/`receipt_id` -- see
+section 14.6). Do not write copy implying the two always agree; they can
+disagree about the same receipt today.

@@ -42,16 +42,18 @@ node generate.mjs childKeyRecord
 | `bundle-tampered-manifest` | `bundle-tampered-manifest.json` | INVALID | `created_at` changed post-signing; DSSE signature no longer matches the payload bytes. |
 | `bundle-removed-artifact` | `bundle-removed-artifact.json` | INVALID | An evidence record deleted post-signing invalidates the bundle proof. |
 | `bundle-inserted-artifact` | `bundle-inserted-artifact.json` | INVALID | An extra record spliced in post-signing invalidates the bundle proof. |
-| `bundle-invalid-child` | `bundle-invalid-child.json` | INVALID | Sealed *after* corrupting one embedded attestation signature, so the outer DSSE signature is genuinely valid over its exact (tampered-child) content -- only the child's own source-proof fails. `verify_bundle()`/`verifyBundle()` today fold this into one overall INVALID; they do not yet report bundle integrity and per-artifact verification separately. Kept in the corpus to document that gap, not to assert the target behavior. |
-| `bundle-unverifiable-child` | `bundle-unverifiable-child.json` | UNVERIFIABLE | One embedded artifact is correctly signed but by a key this fixture's own `verification_material` does not include. Same collapsing caveat as `bundle-invalid-child`. |
-| `bundle-unknown-artifact-type` | `bundle-unknown-artifact-type.json` | VALID | A well-formed evidence record of an unrecognized schema (`onchaindiligence.some-future-action.v9`), embedded via `external-digest`. Today's verifier reports this VALID (digest-bound, no source-attribution claim) rather than UNVERIFIABLE -- an intentionally documented gap against the D4.2 goal that unknown-but-well-formed artifact types should normally become UNVERIFIABLE. |
+| `bundle-invalid-child` | `bundle-invalid-child.json` | INVALID | Sealed *after* corrupting one embedded attestation signature, so the outer DSSE signature is genuinely valid over its exact (tampered-child) content -- only the child's own source-proof fails. Reports `bundle_integrity: VALID` with an INVALID entry in `artifact_verifications[]`; the convenience overall state is INVALID. |
+| `bundle-unverifiable-child` | `bundle-unverifiable-child.json` | UNVERIFIABLE | One embedded artifact is correctly signed but by a key this fixture's own `verification_material` does not include. Reports `bundle_integrity: VALID` with an UNVERIFIABLE entry in `artifact_verifications[]`; the convenience overall state is UNVERIFIABLE. |
+| `bundle-unknown-artifact-type` | `bundle-unknown-artifact-type.json` | UNVERIFIABLE | A well-formed evidence record of an unrecognized schema (`onchaindiligence.some-future-action.v9`), embedded via `external-digest`. `bundle_integrity` stays VALID (the record is genuinely bound by the seal) while the artifact itself reports UNVERIFIABLE via `unknown-artifact-family` -- an unrecognized type is never silently accepted on digest binding alone. |
 
 All seven `expected` values above were confirmed against the real Python
-reference `verify_bundle()`, not asserted by hand -- see
-`docs/AGENT_EVIDENCE_V0.md` section 14 for the full audit trail and the
-recommended Codex implementation plan that would change the two intentionally-gapped
-outcomes (`bundle-invalid-child`, `bundle-unverifiable-child`, and
-`bundle-unknown-artifact-type`).
+reference `verify_bundle()` and the real TypeScript `verifyBundle()`, not
+asserted by hand. `expected` is the convenience overall state (the worst of
+bundle integrity and every artifact result); `bundle_integrity` and
+`artifact_verifications[]` are reported separately and are what a consumer
+should read. See `docs/AGENT_EVIDENCE_V0.md` section 14 for the full audit
+trail, including two known ways the in-bundle receipt check is weaker than the
+dedicated `verifyReceiptEnvelope`.
 
 Verification rules:
 

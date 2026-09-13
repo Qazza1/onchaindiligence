@@ -76,7 +76,7 @@
       "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
       "expected": "VALID",
       "covers": ["D4.2-bundle-issuer", "D4.2-reconciliation", "D4.2-limitations", "D4.2-heterogeneous-artifacts"],
-      "note": "Base D4.2 case: a bundle with the new optional issuer/reconciliation/limitations fields, one onchaindiligence-attestation-v2 evidence artifact, and one public-action-receipt.v1 embedded via external-digest. verify_bundle() today validates the graph and both records' record-level proofs; it does not itself interpret reconciliation/limitations content or verify the receipt's own internal proof -- see AGENT_EVIDENCE_V0.md section 14."
+      "note": "Base D4.2 case: a bundle with the new optional issuer/reconciliation/limitations fields, one onchaindiligence-attestation-v2 evidence artifact, and one public-action-receipt.v1 embedded via external-digest. The verifier checks the graph, both records' record-level proofs, the embedded receipt's own internal proof, and that every reconciliation record_id resolves within this bundle. limitations content stays inert publisher-asserted text. See AGENT_EVIDENCE_V0.md section 14.6 for two ways the in-bundle receipt check is weaker than verifyReceiptEnvelope."
     },
     {
       "id": "bundle-tampered-manifest",
