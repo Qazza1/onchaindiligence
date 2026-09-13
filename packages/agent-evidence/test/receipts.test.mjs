@@ -57,6 +57,14 @@ async function sealForTest(receipt, { issuedAt = '2026-09-04T11:00:01.000Z', pur
   return { envelope: { schema: PUBLIC_ACTION_RECEIPT_SCHEMA, receipt, proof }, keyRecord }
 }
 
+function reverseObjectInsertion(value) {
+  if (Array.isArray(value)) return value.map(reverseObjectInsertion)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reverseObjectInsertion(item)]))
+  }
+  return value
+}
+
 // --- receipt id: deterministic, not sequential, well-defined encoding ---
 
 test('receipt id is deterministic, human-friendly, and derived from the digest', () => {
@@ -105,6 +113,15 @@ test('digest changes if any receipt claim changes, and is stable otherwise', () 
   assert.notEqual(changedAmount, base)
   assert.notEqual(changedLimitations, base)
   assert.equal(computeReceiptDigest(sampleCore()), base, 'identical content must reproduce the identical digest')
+})
+
+test('RFC 8785 receipt proof verification is invariant to object insertion order', async () => {
+  const receipt = finalizeReceiptCore(sampleCore())
+  const shuffled = reverseObjectInsertion(receipt)
+  const { envelope, keyRecord } = await sealForTest(shuffled)
+  // The verifier canonicalizes the reconstructed object, not its insertion order.
+  const report = verifyReceiptEnvelope({ ...envelope, receipt }, TrustPolicy.fromKeyRecords([keyRecord], { now: NOW }))
+  assert.equal(report.state, 'VALID')
 })
 
 // --- proof: VALID / INVALID / UNVERIFIABLE, same philosophy as Agent Evidence ---

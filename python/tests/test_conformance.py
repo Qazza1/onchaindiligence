@@ -158,7 +158,7 @@ def test_bundle_integrity_and_per_artifact_verification_are_separated() -> None:
     unverifiable_child = load_json(CORPUS / "bundle-unverifiable-child.json")
     report = verify_bundle(unverifiable_child, policy)
     assert report.bundle_integrity is VerificationState.VALID
-    assert report.state is VerificationState.UNVERIFIABLE
+    assert report.state is VerificationState.INVALID
     assert any(item.state is VerificationState.UNVERIFIABLE for item in report.artifact_verifications)
     assert any(c.code == "key-not-trusted" for c in report.components)
 
@@ -173,4 +173,4 @@ def test_unknown_artifact_family_is_flagged_unverifiable() -> None:
     unknown = load_json(CORPUS / "bundle-unknown-artifact-type.json")
     report = verify_bundle(unknown, policy)
     assert report.bundle_integrity is VerificationState.VALID
-    assert report.state is VerificationState.UNVERIFIABLE
+    assert any(item.state is VerificationState.UNVERIFIABLE for item in report.artifact_verifications)

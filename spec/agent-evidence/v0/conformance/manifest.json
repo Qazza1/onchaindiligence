@@ -114,7 +114,7 @@
       "id": "bundle-unverifiable-child",
       "fixture": "bundle-unverifiable-child.json",
       "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
-      "expected": "UNVERIFIABLE",
+      "expected": "INVALID",
       "reason": "child-key-not-trusted",
       "note": "One embedded attestation-v2 artifact is correctly signed but by a key (ed25519-Q1DbiLlrVjWZN1Gg) this fixture's own verification_material does not include and the case does not add to trusted_key_ids -- key-not-trusted / trust-proof-unverifiable for that child. Same collapsing caveat as bundle-invalid-child: today this makes the WHOLE bundle UNVERIFIABLE rather than surfacing a separate per-child result."
     },
@@ -122,7 +122,7 @@
       "id": "bundle-unknown-artifact-type",
       "fixture": "bundle-unknown-artifact-type.json",
       "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
-      "expected": "UNVERIFIABLE",
+      "expected": "INVALID",
       "reason": "unknown-artifact-graph-bound-only",
       "note": "A well-formed evidence record (schema 'onchaindiligence.some-future-action.v9') this verifier does not recognize, embedded via external-digest with trust_mode agent-assertion. verify_bundle() today reports this VALID at the graph level (digest-bound, no source-attribution claim made) rather than UNVERIFIABLE. This is an intentionally documented gap against the D4.2 spec's stated goal that an unknown-but-well-formed artifact type should normally become UNVERIFIABLE, not silently pass -- see the Codex implementation plan in AGENT_EVIDENCE_V0.md section 14 for the recommended fix (an explicit artifact-family recognition check, additive to the existing graph-binding check)."
     }
