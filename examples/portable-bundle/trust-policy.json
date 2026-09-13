@@ -1,0 +1,22 @@
+{
+  "keys": [
+    {
+      "algorithm": "ed25519",
+      "compromised_at": null,
+      "key_id": "ed25519-3rLe053Cb84OYIW2",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=\n-----END PUBLIC KEY-----\n",
+      "replacement_key_id": null,
+      "status": "active",
+      "status_changed_at": "2026-08-28T00:00:00.000Z",
+      "valid_from": "2026-08-28T00:00:00.000Z",
+      "valid_until": null
+    }
+  ],
+  "minimum_valid_signatures": 1,
+  "note": "Keys become trusted only because the caller supplies this file out of band. Embedded bundle keys remain untrusted hints.",
+  "reference_verification_time": "2026-08-28T12:01:00.000Z",
+  "required_signature_key_ids": [
+    "ed25519-3rLe053Cb84OYIW2"
+  ],
+  "trust_policy_version": "onchaindiligence.agent-evidence.trust-policy.portable-bundle-example.v1"
+}
