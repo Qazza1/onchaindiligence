@@ -69,6 +69,62 @@
       "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
       "expected": "INVALID",
       "reason": "duplicate-json-name"
+    },
+    {
+      "id": "bundle-with-artifacts",
+      "fixture": "bundle-with-artifacts.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "VALID",
+      "covers": ["D4.2-bundle-issuer", "D4.2-reconciliation", "D4.2-limitations", "D4.2-heterogeneous-artifacts"],
+      "note": "Base D4.2 case: a bundle with the new optional issuer/reconciliation/limitations fields, one onchaindiligence-attestation-v2 evidence artifact, and one public-action-receipt.v1 embedded via external-digest. verify_bundle() today validates the graph and both records' record-level proofs; it does not itself interpret reconciliation/limitations content or verify the receipt's own internal proof -- see AGENT_EVIDENCE_V0.md section 14."
+    },
+    {
+      "id": "bundle-tampered-manifest",
+      "fixture": "bundle-tampered-manifest.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "dsse-signature",
+      "note": "created_at changed post-signing; DSSE signature no longer matches the payload bytes (signature-invalid)."
+    },
+    {
+      "id": "bundle-removed-artifact",
+      "fixture": "bundle-removed-artifact.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "dsse-signature",
+      "note": "One evidence record deleted post-signing; DSSE signature no longer matches the payload bytes (signature-invalid). Confirms removing an artifact invalidates the bundle proof."
+    },
+    {
+      "id": "bundle-inserted-artifact",
+      "fixture": "bundle-inserted-artifact.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "dsse-signature",
+      "note": "An extra record spliced in post-signing; DSSE signature no longer matches the payload bytes (signature-invalid). Confirms inserting an artifact invalidates the bundle proof."
+    },
+    {
+      "id": "bundle-invalid-child",
+      "fixture": "bundle-invalid-child.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "child-signature-invalid",
+      "note": "Sealed AFTER corrupting one embedded attestation-v2 signature, so the bundle's own DSSE signature is genuinely valid over its exact (tampered-child) content -- only the child's own source-proof component fails (signature-invalid / trust-proof-invalid). IMPORTANT: verify_bundle() today folds this into a single overall INVALID state; it does not yet report bundle-level DSSE integrity and per-artifact verification as visibly separate results. This fixture is deliberately kept in the corpus to document that known gap (see AGENT_EVIDENCE_V0.md section 14 and the D4.2 Codex implementation plan) -- 'expected' reflects verify_bundle()'s actual current behavior, not the target per-artifact model."
+    },
+    {
+      "id": "bundle-unverifiable-child",
+      "fixture": "bundle-unverifiable-child.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "UNVERIFIABLE",
+      "reason": "child-key-not-trusted",
+      "note": "One embedded attestation-v2 artifact is correctly signed but by a key (ed25519-Q1DbiLlrVjWZN1Gg) this fixture's own verification_material does not include and the case does not add to trusted_key_ids -- key-not-trusted / trust-proof-unverifiable for that child. Same collapsing caveat as bundle-invalid-child: today this makes the WHOLE bundle UNVERIFIABLE rather than surfacing a separate per-child result."
+    },
+    {
+      "id": "bundle-unknown-artifact-type",
+      "fixture": "bundle-unknown-artifact-type.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "VALID",
+      "reason": "unknown-artifact-graph-bound-only",
+      "note": "A well-formed evidence record (schema 'onchaindiligence.some-future-action.v9') this verifier does not recognize, embedded via external-digest with trust_mode agent-assertion. verify_bundle() today reports this VALID at the graph level (digest-bound, no source-attribution claim made) rather than UNVERIFIABLE. This is an intentionally documented gap against the D4.2 spec's stated goal that an unknown-but-well-formed artifact type should normally become UNVERIFIABLE, not silently pass -- see the Codex implementation plan in AGENT_EVIDENCE_V0.md section 14 for the recommended fix (an explicit artifact-family recognition check, additive to the existing graph-binding check)."
     }
   ]
 }

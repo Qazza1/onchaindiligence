@@ -8,6 +8,10 @@
     "bundle_version": { "const": "onchaindiligence.agent-evidence.bundle.v0" },
     "bundle_id": { "$ref": "common.schema.json#/$defs/contentId" },
     "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "issuer": {
+      "$ref": "common.schema.json#/$defs/nonEmptyString",
+      "description": "OPTIONAL. The bundle sealer's identity, e.g. an issuer URI matching the convention already used by onchaindiligence.attestation.v2's issuer field. Distinct from the DSSE envelope's signing key: this is an asserted identity, not itself a trust root. Omitting it is valid v0 and does not change bundle_id or verification -- the field exists so a portable file can name who assembled it without requiring a caller to inspect key material."
+    },
     "run_id": { "$ref": "common.schema.json#/$defs/contentId" },
     "root_ids": {
       "allOf": [
@@ -21,6 +25,16 @@
       "maxItems": 10000,
       "items": { "$ref": "record.schema.json" }
     },
+    "reconciliation": {
+      "$ref": "#/$defs/reconciliation",
+      "description": "OPTIONAL. A bounded summary of facts already established by this bundle's own records -- it MUST NOT introduce a claim not otherwise evidenced by a referenced record_id in this same bundle. Missing evidence for a subject is insufficient_evidence, never a contradiction."
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+      "maxItems": 64,
+      "description": "OPTIONAL. Same convention as public-action-receipt.schema.json's limitations field. A conformant producer of a bundle intended for external distribution SHOULD state at minimum that bundle validity proves cryptographic integrity under the verifier contract and does not by itself establish authorization, safety, settlement, delivery, compliance, service quality, or economic outcome -- see docs/AGENT_EVIDENCE_V0.md section 14."
+    },
     "extensions": {
       "type": "object",
       "propertyNames": { "type": "string", "format": "uri" },
@@ -28,5 +42,59 @@
       "maxProperties": 256
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "reconciliationEntry": {
+      "type": "object",
+      "required": ["subject", "record_ids", "summary"],
+      "properties": {
+        "subject": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString",
+          "description": "A short, stable label for what is being reconciled, e.g. \"proposed-vs-settled-amount\" or \"recipient-sanctions-status\". Not itself a new fact -- purely a grouping key."
+        },
+        "record_ids": {
+          "allOf": [
+            { "$ref": "common.schema.json#/$defs/idList" },
+            { "type": "array", "minItems": 1 }
+          ],
+          "description": "MUST resolve to records present in this same bundle's records array. A verifier MUST treat an unresolved record_id as a structural defect in the reconciliation section, not as evidence of anything about the subject."
+        },
+        "summary": { "$ref": "common.schema.json#/$defs/nonEmptyString" }
+      },
+      "additionalProperties": false
+    },
+    "reconciliation": {
+      "type": "object",
+      "required": ["agreements", "contradictions", "insufficient_evidence"],
+      "properties": {
+        "agreements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reconciliationEntry" },
+          "maxItems": 256
+        },
+        "contradictions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reconciliationEntry" },
+          "maxItems": 256,
+          "description": "A CONTRADICTION requires at least two referenced records whose own statements/proofs disagree on the same subject. A single record with no counter-evidence is never a contradiction -- see insufficient_evidence."
+        },
+        "insufficient_evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["subject", "summary"],
+            "properties": {
+              "subject": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+              "record_ids": { "$ref": "common.schema.json#/$defs/idList" },
+              "summary": { "$ref": "common.schema.json#/$defs/nonEmptyString" }
+            },
+            "additionalProperties": false
+          },
+          "maxItems": 256,
+          "description": "record_ids MAY be empty when the bundle contains no record touching this subject at all -- absence of evidence, not a claim about the subject."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }

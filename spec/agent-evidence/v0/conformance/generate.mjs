@@ -185,7 +185,279 @@ const missingParentPae = Buffer.concat([
 missingParent.envelope.payload = missingParentBytes.toString('base64')
 missingParent.envelope.signatures[0].sig = sign(null, missingParentPae, privateKey).toString('base64')
 
-const generated = { portable, invalidSignature, noncanonicalPayload, outerVersionMismatch, missingParent, keyRecord }
+// ---------------------------------------------------------------------
+// D4.2 portable evidence bundle fixtures.
+//
+// These reuse the same deterministic bundle-sealer key as the fixtures
+// above. A SECOND, distinct deterministic test key ("child seed") signs
+// one embedded onchaindiligence-attestation-v2 evidence proof in the
+// unverifiable-child fixture, to demonstrate a bundle DSSE signature
+// verifying under a trusted key while one embedded child artifact's own
+// signature is from a key the caller has NOT trusted for that check --
+// both are public test material only, never a production trust root.
+// ---------------------------------------------------------------------
+const childSeed = Buffer.from('9f1c6a3e7d0b52c88a41f6de3b7c905e2a4d81f0c6b3e9a75d2f1c8b6e4a3091', 'hex')
+const childPrivateKey = createPrivateKey({
+  key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), childSeed]),
+  format: 'der',
+  type: 'pkcs8',
+})
+const childPublicKey = createPublicKey(childPrivateKey)
+const childDer = childPublicKey.export({ type: 'spki', format: 'der' })
+const childKeyId = `ed25519-${digestBytes(childDer).slice(0, 16)}`
+
+function signV2(privKey, kid, data, purpose, issuedAt) {
+  const attestationWithoutSig = {
+    schema_version: 'onchaindiligence.attestation.v2',
+    issuer: 'https://api.onchaindiligence.com',
+    purpose,
+    issued_at: issuedAt,
+    key_id: kid,
+    algorithm: 'ed25519',
+    canonicalization: 'RFC8785',
+  }
+  const signedInput = { schema_version: attestationWithoutSig.schema_version, issuer: attestationWithoutSig.issuer, purpose, data, issued_at: issuedAt, key_id: kid }
+  const signature = sign(null, Buffer.from(canonical(signedInput)), privKey).toString('base64url').replace(/=+$/, '')
+  return { data, attestation: { ...attestationWithoutSig, signed: true, signature } }
+}
+
+// A real "compliance-screening-result" v2 envelope -- the one purpose the
+// current v0 reference verifier already checks -- standing in for any
+// onchaindiligence.attestation.v2 artifact (screening results today;
+// allowance/swap/bridge/staking-action share the exact same {data,
+// attestation} envelope shape once a verifier accepts their purposes too;
+// see the D4.2 audit note on this in AGENT_EVIDENCE_V0.md section 14).
+const screeningIssuedAt = '2026-08-28T12:00:02.000Z'
+const screeningV2Envelope = signV2(privateKey, keyId, { address: '0x0000000000000000000000000000000000000002', sanctioned: false }, 'compliance-screening-result', screeningIssuedAt)
+const screeningEvidence = record('evidence', [run.id], {
+  evidence_type: 'sanctions-screen',
+  run_ref: run.id,
+  trust_mode: 'publisher-signed',
+  source: { id: 'https://api.onchaindiligence.com', type: 'https-api' },
+  tool: { name: 'screen_wallet', version: '1' },
+  request: { digest: digestObject({ address: screeningV2Envelope.data.address }), media_type: 'application/json' },
+  response: { mode: 'embedded', media_type: 'application/json', value: screeningV2Envelope, digest: digestObject(screeningV2Envelope) },
+  observed_at: screeningIssuedAt,
+  expires_at: null,
+  scope: { query: screeningV2Envelope.data.address, coverage: 'one test address' },
+}, [{ proof_type: 'onchaindiligence-attestation-v2', envelope: screeningV2Envelope }])
+
+// A real-shaped onchaindiligence.public-action-receipt.v1 object (not a
+// {data,attestation} envelope, so it is embedded via external-digest for
+// outer graph binding -- its own internal `proof` is independently
+// verifiable by a receipt-aware verifier, a step this v0 graph proof does
+// not itself perform; see the D4.2 note on this distinction).
+const receiptIssuedAt = '2026-08-28T12:00:03.000Z'
+const receiptCore = {
+  receipt_id: 'OCD-RCP-CNFM-0000-0000-0001',
+  receipt_type: 'PREFLIGHT',
+  issued_at: receiptIssuedAt,
+  action: { kind: 'ERC20_ALLOWANCE', resource: null, network: 'eip155:8453', asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', amount: '1.00', sender: '0x' + '44'.repeat(20), recipient: null },
+  decision: { status: 'ALLOW', authorized: true, reasons: ['All configured policy checks passed.'] },
+  execution: { provider: null, status: 'NOT_SUBMITTED', transaction_hash: null, submitted_at: null, confirmed_at: null },
+  settlement: { status: 'NOT_APPLICABLE', detail: null },
+  checks: [{ id: 'amount-within-max', result: 'PASS', summary: 'The proposed amount is within the caller-configured maximum.', evidence_digest: null }],
+  links: { agent_evidence_bundle_digest: null, preflight_receipt_id: null },
+  limitations: ['Policy evaluation only -- OCD never holds, moves, or authorizes funds.'],
+}
+const receiptDigest = `sha256:${digest(receiptCore)}`
+const receiptProof = signV2(privateKey, keyId, receiptCore, 'erc20-allowance-action', receiptIssuedAt).attestation
+const receipt = {
+  schema: 'onchaindiligence.public-action-receipt.v1',
+  receipt: { ...receiptCore, receipt_digest: receiptDigest },
+  proof: receiptProof,
+}
+const receiptEvidence = record('evidence', [run.id], {
+  evidence_type: 'onchaindiligence.public-action-receipt.v1',
+  run_ref: run.id,
+  // external-digest only binds this record into the graph by digest; it does
+  // not give the v0 graph verifier a cryptographic source proof to check, so
+  // 'publisher-signed' would be a claim this verifier cannot back today. The
+  // receipt's own internal `proof` IS a real, independently verifiable v2
+  // attestation -- but checking it is receipt-aware verification this graph
+  // proof does not itself perform (see the D4.2 note above and
+  // AGENT_EVIDENCE_V0.md section 14).
+  trust_mode: 'agent-assertion',
+  source: { id: 'https://api.onchaindiligence.com', type: 'https-api' },
+  tool: { name: 'erc20_allowance_preflight', version: '1' },
+  request: { digest: digestObject({ asset: receiptCore.action.asset }), media_type: 'application/json' },
+  response: { mode: 'embedded', media_type: 'application/json', value: receipt, digest: digestObject(receipt) },
+  observed_at: receiptIssuedAt,
+  expires_at: null,
+  scope: { query: receiptCore.action.asset, coverage: 'one preflight artifact' },
+}, [{ proof_type: 'external-digest', media_type: 'onchaindiligence.public-action-receipt.v1', digest: digestObject(receipt) }])
+
+// A well-formed evidence node whose artifact family the verifier does not
+// (and, absent a schema update, cannot) recognize -- graph-bound via the
+// same safe external-digest mechanism, so it MUST surface as UNVERIFIABLE
+// per-artifact without affecting bundle_integrity.
+const unknownIssuedAt = '2026-08-28T12:00:04.000Z'
+const unknownArtifact = { schema: 'onchaindiligence.some-future-action.v9', data: { note: 'a family this verifier has never heard of' } }
+const unknownEvidence = record('evidence', [run.id], {
+  evidence_type: 'onchaindiligence.some-future-action.v9',
+  run_ref: run.id,
+  trust_mode: 'agent-assertion',
+  source: { id: 'urn:onchaindiligence:test:future-tool', type: 'unknown' },
+  tool: { name: 'future_tool', version: '9' },
+  request: { digest: digestObject({}), media_type: 'application/json' },
+  response: { mode: 'embedded', media_type: 'application/json', value: unknownArtifact, digest: digestObject(unknownArtifact) },
+  observed_at: unknownIssuedAt,
+  expires_at: null,
+  scope: { query: 'n/a', coverage: 'unrecognized artifact family, included to exercise unknown-type handling' },
+}, [{ proof_type: 'external-digest', media_type: 'onchaindiligence.some-future-action.v9', digest: digestObject(unknownArtifact) }])
+
+function buildBundlePayload(evidenceRecords) {
+  const allRecords = [principal, agent, mandate, run, ...evidenceRecords].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  const rootIds = evidenceRecords.map((r) => r.id).sort()
+  const payloadWithoutId = {
+    bundle_version: 'onchaindiligence.agent-evidence.bundle.v0',
+    created_at: '2026-08-28T12:00:06.000Z',
+    issuer: 'https://api.onchaindiligence.com',
+    run_id: run.id,
+    root_ids: rootIds,
+    records: allRecords,
+    reconciliation: {
+      agreements: [
+        {
+          subject: 'sanctions-screen-agrees-with-allowance-preflight-policy',
+          record_ids: [screeningEvidence.id, receiptEvidence.id].sort(),
+          summary: 'The sanctions screen found no match for the counterparty, and the allowance preflight independently reached ALLOW under its own policy -- both checks agree the proposed action is not blocked by either evidence source.',
+        },
+      ],
+      contradictions: [],
+      insufficient_evidence: [
+        {
+          subject: 'settlement-confirmation',
+          record_ids: [],
+          summary: 'This bundle contains a PREFLIGHT receipt only; no execution or settlement record is present, so whether the allowance action was ever submitted or settled is not established one way or the other.',
+        },
+      ],
+    },
+    limitations: [
+      'Bundle validity proves cryptographic integrity under the Agent Evidence v0 verifier contract. It does not by itself establish authorization, safety, settlement, delivery, compliance, service quality, or economic outcome.',
+      'Per-artifact verification is reported separately from bundle integrity; a valid bundle signature does not make every embedded artifact VALID.',
+    ],
+    extensions: {},
+  }
+  return { ...payloadWithoutId, bundle_id: `sha256:${digest(payloadWithoutId)}` }
+}
+
+function sealPortable(payload, signingKey, signingKeyId) {
+  const payloadBytes = Buffer.from(canonical(payload))
+  const pae = Buffer.concat([
+    Buffer.from(`DSSEv1 ${Buffer.byteLength(BUNDLE_TYPE)} ${BUNDLE_TYPE} ${payloadBytes.length} `),
+    payloadBytes,
+  ])
+  return {
+    media_type: 'application/vnd.onchaindiligence.agent-evidence+json',
+    bundle_version: 'onchaindiligence.agent-evidence.bundle.v0',
+    envelope: {
+      payloadType: BUNDLE_TYPE,
+      payload: payloadBytes.toString('base64'),
+      signatures: [{ keyid: signingKeyId, sig: sign(null, pae, signingKey).toString('base64') }],
+    },
+    verification_material: { keys: [keyRecord], registry_snapshots: [], anchors: [] },
+  }
+}
+
+// Case: valid bundle with heterogeneous embedded artifacts + reconciliation.
+const bundleWithArtifactsPayload = buildBundlePayload([screeningEvidence, receiptEvidence])
+const bundleWithArtifacts = sealPortable(bundleWithArtifactsPayload, privateKey, keyId)
+
+// Case: tampered manifest -- created_at changed post-signing, so the DSSE
+// signature no longer matches the bytes it was computed over.
+const bundleTamperedManifest = structuredClone(bundleWithArtifacts)
+{
+  const decoded = JSON.parse(Buffer.from(bundleTamperedManifest.envelope.payload, 'base64').toString('utf8'))
+  decoded.created_at = '2099-01-01T00:00:00.000Z'
+  bundleTamperedManifest.envelope.payload = Buffer.from(canonical(decoded)).toString('base64')
+}
+
+// Case: removed artifact -- one evidence record deleted post-signing.
+const bundleRemovedArtifact = structuredClone(bundleWithArtifacts)
+{
+  const decoded = JSON.parse(Buffer.from(bundleRemovedArtifact.envelope.payload, 'base64').toString('utf8'))
+  decoded.records = decoded.records.filter((r) => r.id !== receiptEvidence.id)
+  bundleRemovedArtifact.envelope.payload = Buffer.from(canonical(decoded)).toString('base64')
+}
+
+// Case: inserted artifact -- an extra record spliced in post-signing.
+const bundleInsertedArtifact = structuredClone(bundleWithArtifacts)
+{
+  const decoded = JSON.parse(Buffer.from(bundleInsertedArtifact.envelope.payload, 'base64').toString('utf8'))
+  decoded.records = [...decoded.records, unknownEvidence].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  bundleInsertedArtifact.envelope.payload = Buffer.from(canonical(decoded)).toString('base64')
+}
+
+// Case: bundle DSSE signature is genuinely VALID over its exact content,
+// but one embedded child artifact's own signature is corrupt. Built by
+// tampering the child BEFORE sealing (so the outer signature is fresh and
+// correct over the tampered content) -- this is the "valid bundle, one
+// INVALID child" case the tri-state report must keep visibly distinct.
+const corruptV2Envelope = structuredClone(screeningV2Envelope)
+{
+  const sigBytes = Buffer.from(corruptV2Envelope.attestation.signature, 'base64url')
+  sigBytes[0] ^= 1
+  corruptV2Envelope.attestation.signature = sigBytes.toString('base64url').replace(/=+$/, '')
+}
+const corruptScreeningEvidence = record('evidence', [run.id], {
+  ...screeningEvidence.statement,
+  // digest is recomputed over the tampered envelope so the fixture isolates
+  // a cryptographic signature failure -- leaving the original digest here
+  // would trip the earlier "response digest matches value" structural check
+  // instead of ever reaching signature verification.
+  response: { ...screeningEvidence.statement.response, value: corruptV2Envelope, digest: digestObject(corruptV2Envelope) },
+}, [{ proof_type: 'onchaindiligence-attestation-v2', envelope: corruptV2Envelope }])
+const bundleInvalidChildPayload = buildBundlePayload([corruptScreeningEvidence, receiptEvidence])
+const bundleInvalidChild = sealPortable(bundleInvalidChildPayload, privateKey, keyId)
+
+// Case: bundle DSSE signature is VALID and trusted; one embedded child
+// artifact is correctly signed but by a key the caller's trust material
+// (in this fixture's own verification_material) does not include --
+// UNVERIFIABLE for that child, distinct from both VALID and INVALID.
+const untrustedV2Envelope = signV2(childPrivateKey, childKeyId, { address: '0x0000000000000000000000000000000000000003', sanctioned: false }, 'compliance-screening-result', screeningIssuedAt)
+const untrustedScreeningEvidence = record('evidence', [run.id], {
+  ...screeningEvidence.statement,
+  response: { ...screeningEvidence.statement.response, value: untrustedV2Envelope, digest: digestObject(untrustedV2Envelope) },
+  scope: { query: untrustedV2Envelope.data.address, coverage: 'one test address' },
+}, [{ proof_type: 'onchaindiligence-attestation-v2', envelope: untrustedV2Envelope }])
+const bundleUnverifiableChildPayload = buildBundlePayload([untrustedScreeningEvidence, receiptEvidence])
+const bundleUnverifiableChild = sealPortable(bundleUnverifiableChildPayload, privateKey, keyId)
+// This fixture's own verification_material intentionally omits childKeyId --
+// a manifest case may additionally supply it via trusted_key_ids to invert
+// the expectation and confirm the untrusted-key child becomes VALID once
+// trusted, but the DEFAULT trust here is the bundle-sealer key only.
+
+// Case: well-formed but unrecognized artifact type, alongside a known one.
+const bundleUnknownArtifactTypePayload = buildBundlePayload([screeningEvidence, unknownEvidence])
+const bundleUnknownArtifactType = sealPortable(bundleUnknownArtifactTypePayload, privateKey, keyId)
+
+const generated = {
+  portable,
+  invalidSignature,
+  noncanonicalPayload,
+  outerVersionMismatch,
+  missingParent,
+  keyRecord,
+  bundleWithArtifacts,
+  bundleTamperedManifest,
+  bundleRemovedArtifact,
+  bundleInsertedArtifact,
+  bundleInvalidChild,
+  bundleUnverifiableChild,
+  bundleUnknownArtifactType,
+  childKeyRecord: {
+    key_id: childKeyId,
+    algorithm: 'ed25519',
+    public_key_pem: childPublicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    status: 'active',
+    valid_from: '2026-08-28T00:00:00.000Z',
+    valid_until: null,
+    status_changed_at: '2026-08-28T00:00:00.000Z',
+    replacement_key_id: null,
+    compromised_at: null,
+  },
+}
 const selected = process.argv[2]
 if (selected && !Object.hasOwn(generated, selected)) throw new Error(`unknown fixture: ${selected}`)
 process.stdout.write(JSON.stringify(selected ? generated[selected] : generated, null, 2) + '\n')

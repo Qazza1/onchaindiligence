@@ -464,6 +464,247 @@ custody, a publisher reputation system, mandatory transparency, or causal
 proof between a model decision and a transaction. These require later,
 versioned profiles.
 
+## 14. Portable evidence bundles (D4.2)
+
+This section documents additive changes to `bundle-payload.schema.json` that
+let one bundle package a heterogeneous set of already-existing signed OCD
+artifacts for external distribution, and the current, honest limits of what
+today's reference verifiers can check about that packaging. It does not
+introduce a new format, does not replace any existing artifact, and does not
+change any required field, so every existing v0 bundle remains valid.
+
+### 14.1 Bundle-level additions
+
+Three new OPTIONAL top-level fields on `bundle-payload.schema.json`:
+
+- `issuer` (string) -- the bundle sealer's asserted identity, following the
+  same convention as `onchaindiligence.attestation.v2`'s `issuer` field. It is
+  an assertion, not itself a trust root; omitting it does not change
+  `bundle_id` or verification.
+- `reconciliation` (object) -- a bounded summary of facts already established
+  by the bundle's own records: `agreements[]`, `contradictions[]`, and
+  `insufficient_evidence[]`, each entry naming the `record_ids` it draws on.
+  It MUST NOT introduce a claim not otherwise evidenced by a record in the
+  same bundle. Missing evidence for a subject belongs in
+  `insufficient_evidence`, never `contradictions` -- a contradiction requires
+  at least two referenced records whose own statements/proofs disagree.
+- `limitations` (string array) -- same convention as
+  `public-action-receipt.schema.json`'s `limitations` field. A bundle intended
+  for external distribution SHOULD state at minimum that bundle validity
+  proves cryptographic integrity under the verifier contract and does not by
+  itself establish authorization, safety, settlement, delivery, compliance,
+  service quality, or economic outcome.
+
+No new `$id`, no new schema version, no change to `records`, no change to any
+required field. `bundle_id` continues to be the digest of the full payload
+(now inclusive of these three fields when present), so populating or omitting
+them changes `bundle_id` exactly like any other payload content does today --
+no special-casing was added.
+
+### 14.2 Embedding heterogeneous artifacts
+
+The v0 record-graph model (`record.schema.json`, `proof.schema.json`) already
+supports embedding an existing signed artifact unmodified as the `response` of
+an Evidence Node (section 11). D4.2 does not add a fifth `proof_type`. Instead
+it uses the two that already exist, matched to what each real production
+artifact shape actually is:
+
+- Artifacts already shaped as `{data, attestation}`
+  (`onchaindiligence.attestation.v2`) -- `erc20-allowance-action`,
+  `swap-action`, `bridge-action`, `staking-action`, and compliance-screening
+  results -- embed via the existing `onchaindiligence-attestation-v2` proof
+  type with zero changes. The verifier already checks this proof's signature,
+  issuer, and (for one purpose today -- see 14.4) attestation purpose.
+- `onchaindiligence.public-action-receipt.v1` is shaped `{schema, receipt,
+  proof}`, not `{data, attestation}`, so it does not fit `v2Envelope`. It
+  embeds via the existing `external-digest` proof type, which honestly reports
+  "digest is bound by the record ID but does not establish source
+  attribution" (`record.schema.json`'s own documented semantics for that
+  proof type, unchanged). An evidence node embedded this way MUST use
+  `trust_mode: "agent-assertion"` -- any other `trust_mode` value requires a
+  record-level cryptographic source proof
+  (`verifier.py::_verify_record_proofs`, no else branch beyond
+  `agent-assertion`), which `external-digest` does not provide. This was
+  caught empirically during fixture construction: an earlier draft fixture
+  used `trust_mode: "publisher-signed"` for a receipt embedded via
+  `external-digest` and the reference verifier correctly rejected it
+  (`cryptographic-proof-missing`).
+- No standalone "provider evidence" or "settlement/payment evidence" artifact
+  schema exists in the current codebase (confirmed by inspection of
+  `onchaindiligence-mcp/src/providerEvidence.ts`). That evidence is only
+  reachable today via a `public-action-receipt.v1`'s own `checks[]` /
+  `execution` / `settlement` / `links` fields, so it is covered by the same
+  `external-digest` embedding as any other receipt.
+- A well-formed artifact of a schema/family the verifier does not recognize
+  embeds the same way: `external-digest`, `trust_mode: "agent-assertion"`. See
+  14.4 for how this is reported today versus the D4.2 goal.
+
+`public-action-receipt.schema.json` already defines
+`links.agent_evidence_bundle_digest`, confirming receipts are already meant to
+reference back to a containing bundle by digest -- this bundle design is the
+intended container, not a new parallel one.
+
+### 14.3 Bundle vs. child verification (and today's actual gap)
+
+The task goal is to keep two results visibly distinct: (1) bundle integrity
+(does the outer DSSE signature cover the exact manifest and artifact
+inventory, unmodified) and (2) each embedded artifact's own verification
+result (VALID / INVALID / UNVERIFIABLE). A cryptographically valid bundle must
+never be reported in a way that implies every embedded artifact is valid.
+
+**Today's `verify_bundle()` / `verifyBundle()` do not yet separate these.**
+Both aggregate every component -- outer DSSE check, graph check, and every
+per-record proof check -- into one `overall_state` via a single precedence
+rule (`models.py::overall_state`: any required `INVALID` wins, else any
+`UNVERIFIABLE` wins, else `VALID`). This was verified directly, not asserted:
+the `bundle-invalid-child` fixture is sealed *after* corrupting one embedded
+attestation signature, so its outer DSSE signature is genuinely valid over its
+exact (tampered) content -- yet `verify_bundle()` reports the whole bundle
+`INVALID`, because the corrupted child's `source-proof` component is required
+and INVALID. Symmetrically, `bundle-unverifiable-child` (one artifact signed
+by a key outside the caller's trust set) makes the whole bundle
+`UNVERIFIABLE`, not just that one artifact.
+
+This is an honest, code-verified gap, not a hypothetical one -- see 14.7 for
+the recommended fix. Every other bundle-tamper fixture in this pass (tampered
+manifest, removed artifact, inserted artifact) already gets the correct
+`INVALID` result today, because those failures live entirely in the DSSE/graph
+layer that `overall_state` already isolates correctly when no per-child proof
+is also failing.
+
+### 14.4 Unknown artifact types
+
+An unrecognized `proof_type` string cannot reach a verifier at runtime at all:
+`proof.schema.json`'s `oneOf` is closed over exactly four variants, so schema
+validation rejects it before any verifier code runs. This is why D4.2 does not
+add a fifth `proof_type` -- `_verify_record_proofs` has no default/else branch
+for an unrecognized `proof_type`, so a producer who added one without a
+matching verifier update would get a silent skip (no result at all), which is
+worse than any tri-state outcome and exactly the "silently trusted" failure
+mode this task warns against.
+
+What CAN vary is the artifact's own *content family* (`evidence_type`, or an
+embedded object's own `schema` field) -- a free-form string the verifier's
+proof-type dispatch never inspects. The `bundle-unknown-artifact-type` fixture
+confirms today's actual behavior: a well-formed record of schema
+`onchaindiligence.some-future-action.v9`, embedded via `external-digest`,
+verifies `VALID` (graph-bound, no source-attribution claim -- which is true as
+far as it goes). It does **not** become `UNVERIFIABLE` for being an
+unrecognized family, which is the outcome this task asked for
+("unknown-but-well-formed artifact type should normally become
+UNVERIFIABLE, not silently trusted"). See 14.7 for the recommended fix.
+
+### 14.5 Size / safety bounds
+
+`bundle-payload.schema.json` already enforces hard structural caps unchanged
+by D4.2: `records` 1-10,000 items, `extensions` <=256 properties. The three
+new fields add their own hard caps: `reconciliation.agreements` and
+`.contradictions` <=256 entries each, `.insufficient_evidence` <=256 entries,
+`limitations` <=64 entries. `TrustPolicy` (`trust.py`) already enforces
+operational bounds at the portable-file level regardless of bundle content:
+`max_file_size` (10 MiB default), `max_depth` (64), `max_string_length` (1
+MiB), `max_array_length` (10,000) -- these already bound a bundle carrying many
+artifacts without any D4.2-specific change.
+
+Recommended operational bounds for a future bundle-aware CLI/API layer (not
+schema-level, and not implemented in this pass): a caller-configurable maximum
+artifact count per bundle distinct from the schema's structural ceiling (e.g.
+default 100, since 10,000 heterogeneous signed artifacts is a DoS surface
+long before it is a realistic single-session evidence set); reject a bundle
+containing two records with the same `id` (already impossible today --
+`record.schema.json` content-addresses every record, so a true duplicate
+collapses to the same `id` and the graph check already treats non-unique
+`root_ids`/duplicate references as a defect); and treat a malformed nested
+artifact (valid JSON, invalid against its own claimed schema) as
+`UNVERIFIABLE` for that artifact rather than a hard parse failure for the
+whole bundle -- this behavior should fall out naturally once 14.7's
+per-artifact recognition layer exists.
+
+### 14.6 What is schema-conformant today vs. behaviorally verified today
+
+Every fixture in `spec/agent-evidence/v0/conformance/bundle-*.json` was
+validated against the REAL Python reference `verify_bundle()`
+(`onchaindiligence-agent-evidence==0.1.0`, editable-installed from this
+repository) -- not asserted by hand. But two things are schema-conformant only,
+not behaviorally checked by any current verifier:
+
+- `reconciliation` and `limitations` content is inert data to
+  `verify_bundle()` today. The verifier does not check that
+  `reconciliation.agreements[].record_ids` actually resolve to records in the
+  bundle, does not check that a `contradictions` entry actually cites
+  disagreeing records, and does not check `limitations` wording. Schema
+  validation enforces shape (required sub-fields, cardinality caps); it does
+  not enforce the semantic rules stated in each field's own schema
+  description. This is a real, disclosed gap for 14.7.
+- A `public-action-receipt.v1` embedded via `external-digest` is bound into
+  the graph by digest, but its own internal `receipt.proof` (a real, correctly
+  formed v2 attestation) is never independently verified by the v0 graph
+  verifier. `bundle-with-artifacts.json`'s receipt is genuinely, correctly
+  signed, but that fact is not what makes the fixture's overall result VALID
+  -- graph/digest binding is what makes it VALID.
+
+### 14.7 Codex implementation plan (not implemented in this pass)
+
+In priority order, each independently shippable and independently testable
+against the existing conformance corpus:
+
+1. **Broaden `ATTESTATION_PURPOSE`.** `constants.py` hardcodes
+   `ATTESTATION_PURPOSE = "compliance-screening-result"` as the *only* purpose
+   `_verify_attestation_proof` accepts for `onchaindiligence-attestation-v2`.
+   `attest.ts`'s real purpose union is `compliance-screening-result |
+   public-action-receipt | erc20-allowance-action | swap-action |
+   bridge-action | staking-action`. Today, a real, validly-signed
+   `erc20-allowance-action` (etc.) envelope embedded via
+   `onchaindiligence-attestation-v2` is misreported `INVALID`
+   (`attestation-purpose`) purely because of this hardcoded string. Fix:
+   replace the single constant with the real accepted-purpose set from
+   `attest.ts`. Low risk, additive, and directly fixes a live correctness gap
+   independent of anything else in this plan.
+2. **Separate bundle integrity from per-artifact verification.** Change
+   `overall_state`'s single aggregate into a structured report:
+   `bundle_integrity` (outer DSSE + payload canonicalization + graph
+   structure only, explicitly excluding per-record `source-proof`/
+   `trust-mode` components) and `artifact_verifications[]` (one tri-state
+   result per record, using exactly the same component data already
+   produced). `bundle-invalid-child` and `bundle-unverifiable-child` become
+   the regression fixtures proving `bundle_integrity: VALID` alongside a
+   distinct `INVALID`/`UNVERIFIABLE` entry in `artifact_verifications[]` --
+   today their component lists already contain everything needed; only the
+   aggregation needs to change; no new verification logic is required.
+3. **Add an explicit artifact-family recognition check**, additive to (not a
+   replacement for) `external-digest`'s existing graph-binding result: an
+   evidence record whose `evidence_type` (or embedded object's `schema`) is
+   not in a maintained allow-list of recognized OCD artifact families gets an
+   explicit `UNVERIFIABLE` / `unknown-artifact-family` component alongside the
+   existing `VALID` / `external-digest-bound` one, rather than only the
+   latter. `bundle-unknown-artifact-type.json` is the regression fixture;
+   its expected top-level result should change from `VALID` to
+   `UNVERIFIABLE` once this ships (a manifest.json update, not a fixture
+   change).
+4. **Implement receipt-aware child verification.** For a
+   `public-action-receipt.v1` embedded via `external-digest`, independently
+   verify `receipt.proof` (already a real, checkable v2 attestation) as part
+   of that record's `artifact_verifications[]` entry, using the purpose set
+   widened in (1). This turns "digest-bound only" into a real per-artifact
+   VALID/INVALID/UNVERIFIABLE result for the most common non-`{data,
+   attestation}` artifact family, without touching the receipt schema itself.
+5. **Implement `reconciliation` structural checks**, gated behind (2)'s
+   report shape so they populate `reconciliation` in the new output rather
+   than affecting `bundle_integrity`: verify every `record_ids` entry
+   resolves to a record actually present in the bundle (an unresolved ID is a
+   structural defect in the reconciliation section itself, not evidence about
+   the subject -- already stated in the schema description, not yet
+   enforced).
+6. **CLI/API integration.** Deliberately out of scope for this pass and for
+   items 1-5. Once (1)-(5) ship, `onchaindiligence-cli`'s existing
+   `--trust`/`--fetch-keys` offline-verification path (section 8, and the
+   D4.1 docs work) is the natural place to expose bundle verification --
+   `bundle_integrity` / `artifact_verifications[]` / `reconciliation` should
+   map directly onto that CLI's existing tri-state exit-code contract
+   (0/3/4/2) with one exit code reflecting the worst
+   `artifact_verifications[]` entry alongside `bundle_integrity`, kept
+   visibly separate in output exactly as required here.
+
 ## Appendix A. Production reference artifact (non-normative)
 
 The repository's [`examples/production/p1_8`](../examples/production/p1_8/README.md)

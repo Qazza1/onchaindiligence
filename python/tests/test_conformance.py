@@ -122,3 +122,49 @@ def test_duplicate_fixture_is_not_accepted_by_plain_contract_parser() -> None:
 def test_numeric_overflow_is_rejected_during_parsing() -> None:
     with pytest.raises(ParseError, match="finite IEEE-754"):
         parse_json('{"n":1e999}')
+
+
+def test_bundle_with_optional_d42_fields_is_valid_and_populated() -> None:
+    portable = load_json(CORPUS / "bundle-with-artifacts.json")
+    report = verify_bundle(portable, trusted_policy(load_json(CORPUS / "valid-full-graph.json")))
+    assert report.state is VerificationState.VALID
+    assert report.payload is not None
+    assert report.payload["issuer"] == "https://api.onchaindiligence.com"
+    assert report.payload["reconciliation"]["agreements"]
+    assert report.payload["limitations"]
+
+
+def test_bundle_integrity_and_per_artifact_verification_are_not_yet_separated() -> None:
+    """Pins today's documented gap (AGENT_EVIDENCE_V0.md section 14.3): a
+    bundle whose outer DSSE signature is genuinely valid over its exact
+    (tampered-child) content still reports overall INVALID/UNVERIFIABLE,
+    because per-record proof failures are not yet reported separately from
+    bundle integrity. This test should be updated, not deleted, once the
+    Codex plan's item 2 (bundle_integrity vs artifact_verifications[]) ships
+    -- at that point it should assert bundle_integrity is VALID *alongside*
+    a distinct non-VALID artifact_verifications[] entry.
+    """
+    policy = trusted_policy(load_json(CORPUS / "valid-full-graph.json"))
+
+    invalid_child = load_json(CORPUS / "bundle-invalid-child.json")
+    report = verify_bundle(invalid_child, policy)
+    assert report.state is VerificationState.INVALID
+    codes = {c.code for c in report.components}
+    assert "signature-invalid" in codes or "trust-proof-invalid" in codes
+    assert not any(c.code == "signature-invalid" and c.component == "outer" for c in report.components)
+
+    unverifiable_child = load_json(CORPUS / "bundle-unverifiable-child.json")
+    report = verify_bundle(unverifiable_child, policy)
+    assert report.state is VerificationState.UNVERIFIABLE
+    assert any(c.code == "key-not-trusted" for c in report.components)
+
+
+def test_unknown_artifact_family_is_not_yet_flagged_unverifiable() -> None:
+    """Pins today's documented gap (AGENT_EVIDENCE_V0.md section 14.4): a
+    well-formed evidence record of an unrecognized schema, embedded via
+    external-digest, verifies VALID today rather than UNVERIFIABLE. Update
+    this test (expected -> UNVERIFIABLE) once Codex plan item 3 ships.
+    """
+    policy = trusted_policy(load_json(CORPUS / "valid-full-graph.json"))
+    unknown = load_json(CORPUS / "bundle-unknown-artifact-type.json")
+    assert verify_bundle(unknown, policy).state is VerificationState.VALID
