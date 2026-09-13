@@ -8,3 +8,14 @@ BUNDLE_PAYLOAD_TYPE = "application/vnd.onchaindiligence.agent-evidence.bundle.v0
 ATTESTATION_V2 = "onchaindiligence.attestation.v2"
 ATTESTATION_ISSUER = "https://api.onchaindiligence.com"
 ATTESTATION_PURPOSE = "compliance-screening-result"
+ATTESTATION_PURPOSES = frozenset(
+    {
+        ATTESTATION_PURPOSE,
+        "verification-fixture",
+        "public-action-receipt",
+        "erc20-allowance-action",
+        "swap-action",
+        "bridge-action",
+        "staking-action",
+    }
+)

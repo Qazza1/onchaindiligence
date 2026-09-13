@@ -45,11 +45,29 @@ class ComponentResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactVerification:
+    """A visible tri-state result for one record inside a verified bundle."""
+
+    record_id: str
+    state: VerificationState
+    components: tuple[ComponentResult, ...]
+
+    def to_dict(self) -> JsonObject:
+        return {
+            "record_id": self.record_id,
+            "state": self.state.value,
+            "components": [component.to_dict() for component in self.components],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class VerificationReport:
     """Machine-readable offline verification report."""
 
     state: VerificationState
     components: tuple[ComponentResult, ...]
+    bundle_integrity: VerificationState
+    artifact_verifications: tuple[ArtifactVerification, ...]
     bundle_id: str | None = None
     payload: JsonObject | None = field(default=None, repr=False, compare=False)
 
@@ -62,6 +80,8 @@ class VerificationReport:
             "state": self.state.value,
             "bundle_id": self.bundle_id,
             "components": [component.to_dict() for component in self.components],
+            "bundle_integrity": self.bundle_integrity.value,
+            "artifact_verifications": [item.to_dict() for item in self.artifact_verifications],
         }
         if include_payload and self.payload is not None:
             result["payload"] = self.payload

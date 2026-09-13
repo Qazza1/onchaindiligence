@@ -1,7 +1,7 @@
 import { verify as ed25519Verify } from 'node:crypto'
 import {
   ATTESTATION_ISSUER,
-  ATTESTATION_PURPOSE,
+  ATTESTATION_PURPOSES,
   ATTESTATION_V2,
   BUNDLE_PAYLOAD_TYPE,
   BUNDLE_VERSION,
@@ -63,13 +63,21 @@ export function overallState(components: readonly ComponentResult[]): Verificati
   return 'VALID'
 }
 
+const BUNDLE_INTEGRITY_COMPONENTS = new Set(['outer', 'bundle-signature', 'payload', 'graph'])
+
 function report(components: ComponentResult[], payload?: BundlePayload): VerificationReport {
   const state = overallState(components)
+  const integrityComponents = components.filter((item) => BUNDLE_INTEGRITY_COMPONENTS.has(item.component))
   const value: VerificationReport = {
     state,
     valid: state === 'VALID',
     bundle_id: payload?.bundle_id ?? null,
     components,
+    bundle_integrity: { state: overallState(integrityComponents), components: integrityComponents },
+    artifact_verifications: (payload?.records ?? []).map((record) => {
+      const children = components.filter((item) => item.record_id === record.id)
+      return { record_id: record.id, state: overallState(children), components: children }
+    }),
   }
   if (payload) value.payload = payload
   return value
@@ -220,9 +228,9 @@ function verifyAttestationProof(
       return result('source-proof', 'INVALID', 'attestation-issuer',
         'v2 attestation issuer is not the exact OnChainDiligence issuer', { keyId, recordId })
     }
-    if (attestation.purpose !== ATTESTATION_PURPOSE) {
+    if (!(ATTESTATION_PURPOSES as readonly string[]).includes(String(attestation.purpose))) {
       return result('source-proof', 'INVALID', 'attestation-purpose',
-        'v2 attestation purpose is not a compliance result', { keyId, recordId })
+        'v2 attestation purpose is not in the current production allowlist', { keyId, recordId })
     }
     message = canonicalize({
       schema_version: ATTESTATION_V2,
@@ -260,6 +268,22 @@ function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): Compon
       if (proofType === 'external-digest') {
         components.push(result('source-proof', 'VALID', 'external-digest-bound',
           'digest is bound by the record ID but does not establish source attribution', { recordId: record.id }))
+        const response = record.statement.response as JsonObject
+        if (record.kind === 'evidence' && record.statement.evidence_type === 'onchaindiligence.public-action-receipt.v1'
+          && response.mode === 'embedded') {
+          const receiptEnvelope = response.value as JsonObject
+          const receiptProof = receiptEnvelope.proof as JsonObject
+          const receipt = receiptEnvelope.receipt
+          if (!receiptProof || !receipt) {
+            components.push(result('receipt-proof', 'INVALID', 'receipt-proof-missing',
+              'embedded public receipt must contain its own attestation proof', { recordId: record.id }))
+          } else {
+            components.push(verifyAttestationProof({
+              proof_type: 'onchaindiligence-attestation-v2',
+              envelope: { data: receipt, attestation: receiptProof },
+            }, policy, record.id))
+          }
+        }
       } else if (
         proofType === 'onchaindiligence-attestation-v1'
         || proofType === 'onchaindiligence-attestation-v2'
@@ -315,6 +339,36 @@ function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): Compon
     }
   }
   return components
+}
+
+const RECOGNIZED_EVIDENCE_FAMILIES = new Set([
+  'sanctions-screen', 'us-public-company-record', 'technocore-signed-message', 'tclk-transcript',
+  'recipient-binding-check', 'recipient-check', 'interop-fixture', 'onchaindiligence.public-action-receipt.v1',
+])
+
+function verifyArtifactFamilies(payload: BundlePayload): ComponentResult[] {
+  return payload.records.filter((record) => record.kind === 'evidence').flatMap((record) => {
+    const type = String(record.statement.evidence_type)
+    return RECOGNIZED_EVIDENCE_FAMILIES.has(type) ? [] : [result('artifact-family', 'UNVERIFIABLE',
+      'unknown-artifact-family', `evidence_type ${type} is not recognized by this verifier`, { recordId: record.id })]
+  })
+}
+
+function verifyReconciliationReferences(payload: BundlePayload): ComponentResult[] {
+  const reconciliation = payload.reconciliation as JsonObject | undefined
+  if (!reconciliation) return []
+  const recordIds = new Set(payload.records.map((record) => record.id))
+  const components: ComponentResult[] = []
+  for (const group of ['agreements', 'contradictions', 'insufficient_evidence']) {
+    for (const entry of (reconciliation[group] as JsonObject[])) {
+      for (const recordId of ((entry.record_ids ?? []) as string[])) {
+        if (!recordIds.has(recordId)) components.push(result('reconciliation', 'INVALID', 'reconciliation-record-missing',
+          `reconciliation ${group} references a record not present in this bundle`, { recordId }))
+      }
+    }
+  }
+  return components.length ? components : [result('reconciliation', 'VALID', 'reconciliation-references-valid',
+    'all reconciliation record_ids resolve within this bundle')]
 }
 
 function verifyEvidenceSemantics(
@@ -588,9 +642,13 @@ export function verifyBundle(
   }
   components.push(result('graph', 'VALID', 'graph-valid',
     'IDs, roots, DAG, references, and kind rules are valid'))
+  components.push(...payload.records.map((record) => result('artifact-binding', 'VALID', 'bundle-record-bound',
+    'record is bound by the valid bundle graph and outer DSSE payload', { recordId: record.id })))
   const proofComponents = verifyRecordProofs(payload, policy)
   components.push(...proofComponents)
   components.push(...verifyEvidenceSemantics(payload, proofComponents, policy))
+  components.push(...verifyArtifactFamilies(payload))
+  components.push(...verifyReconciliationReferences(payload))
   components.push(...verifyFreshness(payload, policy))
   return report(components, payload)
 }

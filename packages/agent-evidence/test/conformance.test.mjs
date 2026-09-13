@@ -93,3 +93,19 @@ test('embedded verification keys remain hints and never become ambient trust', a
   assert.equal(report.state, 'UNVERIFIABLE')
   assert.ok(report.components.some((component) => component.code === 'key-not-trusted'))
 })
+
+test('D4.2 keeps outer integrity separate from every artifact result', async () => {
+  const base = await json(new URL('valid-full-graph.json', conformance))
+  const policy = policyFor(base, ['ed25519-3rLe053Cb84OYIW2'])
+  for (const [fixture, expected] of [
+    ['bundle-invalid-child.json', 'INVALID'],
+    ['bundle-unverifiable-child.json', 'UNVERIFIABLE'],
+  ]) {
+    const report = verifyBundle(await json(new URL(fixture, conformance)), policy)
+    assert.equal(report.bundle_integrity.state, 'VALID', fixture)
+    assert.ok(report.artifact_verifications.some((item) => item.state === expected), fixture)
+  }
+  const unknown = verifyBundle(await json(new URL('bundle-unknown-artifact-type.json', conformance)), policy)
+  assert.equal(unknown.bundle_integrity.state, 'VALID')
+  assert.ok(unknown.artifact_verifications.some((item) => item.state === 'UNVERIFIABLE'))
+})

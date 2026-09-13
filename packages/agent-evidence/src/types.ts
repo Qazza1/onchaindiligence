@@ -31,6 +31,8 @@ export interface BundlePayload {
   run_id: string
   root_ids: string[]
   records: AgentEvidenceRecord[]
+  reconciliation?: JsonObject
+  limitations?: string[]
   extensions: JsonObject
 }
 
@@ -96,5 +98,9 @@ export interface VerificationReport {
   valid: boolean
   bundle_id: string | null
   components: ComponentResult[]
+  /** Outer DSSE, canonical payload and DAG only; never hides child results. */
+  bundle_integrity: { state: VerificationState; components: ComponentResult[] }
+  /** One independently visible result for every record bound into the bundle. */
+  artifact_verifications: Array<{ record_id: string; state: VerificationState; components: ComponentResult[] }>
   payload?: BundlePayload
 }

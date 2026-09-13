@@ -14,7 +14,7 @@ from cryptography.exceptions import InvalidSignature
 from .canonical import canonicalize, enforce_limits, parse_json, parse_timestamp
 from .constants import (
     ATTESTATION_ISSUER,
-    ATTESTATION_PURPOSE,
+    ATTESTATION_PURPOSES,
     ATTESTATION_V2,
     BUNDLE_PAYLOAD_TYPE,
     BUNDLE_VERSION,
@@ -29,6 +29,7 @@ from .errors import (
 )
 from .graph import validate_bundle_payload
 from .models import (
+    ArtifactVerification,
     ComponentResult,
     JsonObject,
     VerificationReport,
@@ -59,9 +60,24 @@ def _report(
     *,
     payload: JsonObject | None = None,
 ) -> VerificationReport:
+    integrity_components = [
+        item
+        for item in components
+        if item.component in {"outer", "bundle-signature", "payload", "graph"}
+    ]
+    artifacts = tuple(
+        ArtifactVerification(
+            record_id=record["id"],
+            state=overall_state([item for item in components if item.record_id == record["id"]]),
+            components=tuple(item for item in components if item.record_id == record["id"]),
+        )
+        for record in (payload or {}).get("records", [])
+    )
     return VerificationReport(
         state=overall_state(components),
         components=tuple(components),
+        bundle_integrity=overall_state(integrity_components),
+        artifact_verifications=artifacts,
         bundle_id=payload.get("bundle_id") if payload is not None else None,
         payload=payload,
     )
@@ -277,12 +293,12 @@ def _verify_attestation_proof(
                 key_id=key_id,
                 record_id=record_id,
             )
-        if attestation["purpose"] != ATTESTATION_PURPOSE:
+        if attestation["purpose"] not in ATTESTATION_PURPOSES:
             return _result(
                 "source-proof",
                 VerificationState.INVALID,
                 "attestation-purpose",
-                "v2 attestation purpose is not a compliance result",
+                "v2 attestation purpose is not in the current production allowlist",
                 key_id=key_id,
                 record_id=record_id,
             )
@@ -342,6 +358,35 @@ def _verify_record_proofs(
                         record_id=record_id,
                     )
                 )
+                statement = record["statement"]
+                response = statement["response"]
+                if (
+                    record["kind"] == "evidence"
+                    and statement["evidence_type"] == "onchaindiligence.public-action-receipt.v1"
+                    and response["mode"] == "embedded"
+                ):
+                    receipt_envelope = response["value"]
+                    if not isinstance(receipt_envelope, dict) or not isinstance(receipt_envelope.get("receipt"), dict) or not isinstance(receipt_envelope.get("proof"), dict):
+                        components.append(
+                            _result(
+                                "receipt-proof",
+                                VerificationState.INVALID,
+                                "receipt-proof-missing",
+                                "embedded public receipt must contain its own attestation proof",
+                                record_id=record_id,
+                            )
+                        )
+                    else:
+                        components.append(
+                            _verify_attestation_proof(
+                                {
+                                    "proof_type": "onchaindiligence-attestation-v2",
+                                    "envelope": {"data": receipt_envelope["receipt"], "attestation": receipt_envelope["proof"]},
+                                },
+                                policy,
+                                record_id,
+                            )
+                        )
             elif proof_type in {
                 "onchaindiligence-attestation-v1",
                 "onchaindiligence-attestation-v2",
@@ -510,6 +555,66 @@ def _verify_evidence_semantics(
             )
         )
     return components
+
+
+_RECOGNIZED_EVIDENCE_FAMILIES = {
+    "sanctions-screen",
+    "us-public-company-record",
+    "technocore-signed-message",
+    "tclk-transcript",
+    "recipient-binding-check",
+    "recipient-check",
+    "interop-fixture",
+    "onchaindiligence.public-action-receipt.v1",
+}
+
+
+def _verify_artifact_families(payload: JsonObject) -> list[ComponentResult]:
+    components: list[ComponentResult] = []
+    for record in payload["records"]:
+        if record["kind"] != "evidence":
+            continue
+        evidence_type = record["statement"]["evidence_type"]
+        if evidence_type not in _RECOGNIZED_EVIDENCE_FAMILIES:
+            components.append(
+                _result(
+                    "artifact-family",
+                    VerificationState.UNVERIFIABLE,
+                    "unknown-artifact-family",
+                    f"evidence_type {evidence_type} is not recognized by this verifier",
+                    record_id=record["id"],
+                )
+            )
+    return components
+
+
+def _verify_reconciliation_references(payload: JsonObject) -> list[ComponentResult]:
+    reconciliation = payload.get("reconciliation")
+    if reconciliation is None:
+        return []
+    record_ids = {record["id"] for record in payload["records"]}
+    components: list[ComponentResult] = []
+    for group in ("agreements", "contradictions", "insufficient_evidence"):
+        for entry in reconciliation[group]:
+            for record_id in entry.get("record_ids", []):
+                if record_id not in record_ids:
+                    components.append(
+                        _result(
+                            "reconciliation",
+                            VerificationState.INVALID,
+                            "reconciliation-record-missing",
+                            f"reconciliation {group} references a record not present in this bundle",
+                            record_id=record_id,
+                        )
+                    )
+    return components or [
+        _result(
+            "reconciliation",
+            VerificationState.VALID,
+            "reconciliation-references-valid",
+            "all reconciliation record_ids resolve within this bundle",
+        )
+    ]
 
 
 def _verification_material_components(portable: JsonObject, policy: TrustPolicy) -> list[ComponentResult]:
@@ -847,8 +952,20 @@ def verify_bundle(
             "IDs, roots, DAG, references, and kind rules are valid",
         )
     )
+    components.extend(
+        _result(
+            "artifact-binding",
+            VerificationState.VALID,
+            "bundle-record-bound",
+            "record is bound by the valid bundle graph and outer DSSE payload",
+            record_id=record["id"],
+        )
+        for record in payload["records"]
+    )
     proof_components = _verify_record_proofs(payload, policy)
     components.extend(proof_components)
     components.extend(_verify_evidence_semantics(payload, proof_components, policy))
+    components.extend(_verify_artifact_families(payload))
+    components.extend(_verify_reconciliation_references(payload))
     components.extend(_verify_freshness(payload, policy))
     return _report(components, payload=payload)
