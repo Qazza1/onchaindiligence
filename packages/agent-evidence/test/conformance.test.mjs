@@ -59,6 +59,7 @@ test('packaged schemas and corpus are byte-identical to the canonical repository
     'bundle-removed-artifact.json',
     'bundle-inserted-artifact.json',
     'bundle-invalid-child.json',
+    'bundle-invalid-embedded-receipt-no-external-proof.json',
     'bundle-unverifiable-child.json',
     'bundle-unknown-artifact-type.json',
     'bundle-bad-reconciliation-reference.json',
@@ -113,6 +114,8 @@ test('D4.2 keeps outer integrity separate from every artifact result', async () 
   const policy = policyFor(base, ['ed25519-3rLe053Cb84OYIW2'])
   for (const [fixture, expected] of [
     ['bundle-invalid-child.json', 'INVALID'],
+    ['bundle-invalid-embedded-receipt-no-external-proof.json', 'INVALID'],
+    ['bundle-unverifiable-referenced-receipt.json', 'UNVERIFIABLE'],
     ['bundle-unverifiable-child.json', 'UNVERIFIABLE'],
   ]) {
     const report = verifyBundle(await json(new URL(fixture, conformance)), policy)
@@ -120,6 +123,23 @@ test('D4.2 keeps outer integrity separate from every artifact result', async () 
     assert.equal(report.state, expected, fixture)
     assert.ok(report.artifact_verifications.some((item) => item.state === expected), fixture)
   }
+  const receiptBypass = verifyBundle(
+    await json(new URL('bundle-invalid-embedded-receipt-no-external-proof.json', conformance)),
+    policy,
+  )
+  assert.equal(receiptBypass.bundle_integrity.state, 'VALID')
+  assert.equal(receiptBypass.state, 'INVALID')
+  assert.ok(receiptBypass.components.some((item) => item.component === 'receipt-proof' && item.state === 'INVALID'))
+  const referencedReceipt = verifyBundle(
+    await json(new URL('bundle-unverifiable-referenced-receipt.json', conformance)),
+    TrustPolicy.fromKeyRecords(base.verification_material.keys, {
+      now: new Date('2026-08-28T12:01:00.000Z'),
+      allowDigestOnlyEvidence: true,
+    }),
+  )
+  assert.equal(referencedReceipt.bundle_integrity.state, 'VALID')
+  assert.equal(referencedReceipt.state, 'UNVERIFIABLE')
+  assert.ok(referencedReceipt.components.some((item) => item.code === 'receipt-content-unavailable'))
   const unknown = verifyBundle(await json(new URL('bundle-unknown-artifact-type.json', conformance)), policy)
   assert.equal(unknown.bundle_integrity.state, 'VALID')
   assert.equal(unknown.state, 'UNVERIFIABLE')

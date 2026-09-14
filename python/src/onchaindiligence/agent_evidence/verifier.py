@@ -343,6 +343,53 @@ def _verify_attestation_proof(
     )
 
 
+def _verify_embedded_public_receipt(
+    record: JsonObject,
+    policy: TrustPolicy,
+) -> ComponentResult | None:
+    if (
+        record["kind"] != "evidence"
+        or record["statement"]["evidence_type"] != "onchaindiligence.public-action-receipt.v1"
+    ):
+        return None
+    record_id = record["id"]
+    response = record["statement"]["response"]
+    if not isinstance(response, dict):
+        return _result(
+            "receipt-proof",
+            VerificationState.INVALID,
+            "receipt-response-invalid",
+            "public receipt evidence response must be an object",
+            record_id=record_id,
+        )
+    if response.get("mode") != "embedded":
+        return _result(
+            "receipt-proof",
+            VerificationState.UNVERIFIABLE,
+            "receipt-content-unavailable",
+            "recognized public receipt evidence must embed the receipt to verify its proof offline",
+            record_id=record_id,
+        )
+    try:
+        verified = verify_receipt_envelope(response.get("value"), policy)
+    except Exception as exc:  # Defensive boundary around untrusted embedded content.
+        return _result(
+            "receipt-proof",
+            VerificationState.INVALID,
+            "receipt-proof-invalid",
+            str(exc),
+            record_id=record_id,
+        )
+    return _result(
+        "receipt-proof",
+        verified.state,
+        verified.code,
+        verified.message,
+        key_id=verified.key_id,
+        record_id=record_id,
+    )
+
+
 def _verify_record_proofs(
     payload: JsonObject,
     policy: TrustPolicy,
@@ -362,40 +409,6 @@ def _verify_record_proofs(
                         record_id=record_id,
                     )
                 )
-                statement = record["statement"]
-                response = statement["response"]
-                if (
-                    record["kind"] == "evidence"
-                    and statement["evidence_type"] == "onchaindiligence.public-action-receipt.v1"
-                    and response["mode"] == "embedded"
-                ):
-                    receipt_envelope = response["value"]
-                    if (
-                        not isinstance(receipt_envelope, dict)
-                        or not isinstance(receipt_envelope.get("receipt"), dict)
-                        or not isinstance(receipt_envelope.get("proof"), dict)
-                    ):
-                        components.append(
-                            _result(
-                                "receipt-proof",
-                                VerificationState.INVALID,
-                                "receipt-proof-missing",
-                                "embedded public receipt must contain its own attestation proof",
-                                record_id=record_id,
-                            )
-                        )
-                    else:
-                        verified = verify_receipt_envelope(receipt_envelope, policy)
-                        components.append(
-                            _result(
-                                "receipt-proof",
-                                verified.state,
-                                verified.code,
-                                verified.message,
-                                key_id=verified.key_id,
-                                record_id=record_id,
-                            )
-                        )
             elif proof_type in {
                 "onchaindiligence-attestation-v1",
                 "onchaindiligence-attestation-v2",
@@ -478,6 +491,9 @@ def _verify_record_proofs(
                         record_id=record_id,
                     )
                 )
+        receipt_verification = _verify_embedded_public_receipt(record, policy)
+        if receipt_verification is not None:
+            components.append(receipt_verification)
     return components
 
 

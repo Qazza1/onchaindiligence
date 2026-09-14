@@ -144,6 +144,28 @@ def test_bundle_integrity_and_per_artifact_verification_are_separated() -> None:
     assert "signature-invalid" in codes or "trust-proof-invalid" in codes
     assert not any(c.code == "signature-invalid" and c.component == "outer" for c in report.components)
 
+    receipt_without_external_proof = load_json(CORPUS / "bundle-invalid-embedded-receipt-no-external-proof.json")
+    report = verify_bundle(receipt_without_external_proof, policy)
+    assert report.bundle_integrity.state is VerificationState.VALID
+    assert report.state is VerificationState.INVALID
+    assert any(
+        component.component == "receipt-proof" and component.state is VerificationState.INVALID
+        for component in report.components
+    )
+
+    referenced_receipt = load_json(CORPUS / "bundle-unverifiable-referenced-receipt.json")
+    report = verify_bundle(
+        referenced_receipt,
+        TrustPolicy.from_key_records(
+            load_json(CORPUS / "valid-full-graph.json")["verification_material"]["keys"],
+            now=NOW,
+            allow_digest_only_evidence=True,
+        ),
+    )
+    assert report.bundle_integrity.state is VerificationState.VALID
+    assert report.state is VerificationState.UNVERIFIABLE
+    assert any(component.code == "receipt-content-unavailable" for component in report.components)
+
     unverifiable_child = load_json(CORPUS / "bundle-unverifiable-child.json")
     report = verify_bundle(unverifiable_child, policy)
     assert report.bundle_integrity.state is VerificationState.VALID
