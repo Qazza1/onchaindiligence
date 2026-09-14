@@ -619,7 +619,12 @@ from `bundle-with-artifacts.json`, not transcribed from the types):
 {
   "state": "VALID",
   "bundle_id": "sha256:...",
-  "bundle_integrity": "VALID",
+  "bundle_integrity": {
+    "state": "VALID",
+    "components": [
+      { "component": "outer", "state": "VALID", "code": "outer-valid", "required": true, "message": "..." }
+    ]
+  },
   "artifact_verifications": [
     {
       "record_id": "sha256:...",
@@ -635,25 +640,12 @@ from `bundle-with-artifacts.json`, not transcribed from the types):
 }
 ```
 
-**The two implementations are not byte-normalized, and a consumer must not
-assume they are.** Verified by dumping both for the same fixture:
-
-| field | Python `to_dict()` | TypeScript `verifyBundle()` |
-| --- | --- | --- |
-| `state` | string | string |
-| `bundle_id` | string \| null | string \| null |
-| `components` | array | array |
-| `artifact_verifications[]` | `{record_id, state, components}` | identical |
-| `bundle_integrity` | **string** (`"VALID"`) | **object** (`{state, components}`) |
-| `valid` | absent | boolean (pre-dates D4.2) |
-
-`bundle_integrity` therefore needs a type check, not a direct comparison, in
-any cross-language consumer: `typeof x === 'string' ? x : x.state`. This
-divergence is a genuine gap in the report contract rather than an intended
-distinction -- the TypeScript form is the more useful one, since it carries the
-components behind the verdict. Converging them is runtime work and is
-deliberately out of scope for this documentation pass; it is recorded here so
-the CLI/SDK integration does not encode the difference into a public surface.
+Python `to_dict()` and TypeScript `verifyBundle()` expose the same normalized
+public report: `state`, `bundle_id`, `components`,
+`bundle_integrity: {state, components}`, `artifact_verifications[]`,
+`reconciliation`, and `limitations`. Cross-language conformance tests compare
+these fields for every D4.2 bundle case. `valid` is a TypeScript convenience
+boolean and is not part of the normalized cross-language contract.
 
 Every bundle-tamper fixture (tampered manifest, removed artifact, inserted
 artifact) still reports `bundle_integrity: INVALID`, because those failures

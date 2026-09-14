@@ -36,6 +36,8 @@ test('TypeScript and Python expose the same normalized portable bundle report', 
   for (const fixture of [
     'bundle-with-artifacts.json',
     'bundle-invalid-child.json',
+    'bundle-invalid-embedded-receipt-no-external-proof.json',
+    'bundle-unverifiable-referenced-receipt.json',
     'bundle-unverifiable-child.json',
     'bundle-unknown-artifact-type.json',
     'bundle-bad-reconciliation-reference.json',

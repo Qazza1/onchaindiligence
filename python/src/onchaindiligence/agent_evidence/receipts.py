@@ -123,7 +123,7 @@ def verify_receipt_envelope(
         return ReceiptVerificationResult(
             VerificationState.INVALID,
             "signature-invalid",
-            "attestation signature does not verify",
+            "Ed25519 signature does not verify over the exact canonical signing input",
             key_id,
         )
     state, code, message = evaluate_key_lifecycle(key, signed_at=issued_at, policy=policy)

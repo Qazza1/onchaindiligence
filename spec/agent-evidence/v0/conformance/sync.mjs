@@ -14,10 +14,16 @@ const fixtures = {
   bundleRemovedArtifact: 'bundle-removed-artifact.json',
   bundleInsertedArtifact: 'bundle-inserted-artifact.json',
   bundleInvalidChild: 'bundle-invalid-child.json',
+  bundleInvalidEmbeddedReceiptNoExternalProof: 'bundle-invalid-embedded-receipt-no-external-proof.json',
+  bundleUnverifiableReferencedReceipt: 'bundle-unverifiable-referenced-receipt.json',
   bundleUnverifiableChild: 'bundle-unverifiable-child.json',
   bundleUnknownArtifactType: 'bundle-unknown-artifact-type.json',
   bundleBadReconciliationReference: 'bundle-bad-reconciliation-reference.json',
   bundleSingletonContradiction: 'bundle-singleton-contradiction.json',
+}
+
+function sameTextContent(left, right) {
+  return left.replaceAll('\r\n', '\n') === right.replaceAll('\r\n', '\n')
 }
 
 for (const [selector, filename] of Object.entries(fixtures)) {
@@ -25,8 +31,8 @@ for (const [selector, filename] of Object.entries(fixtures)) {
   const expected = `${JSON.stringify(generated[selector], null, 2)}\n`
   const actual = await readFile(target, 'utf8').catch(() => null)
   if (check) {
-    if (actual !== expected) throw new Error(`generated fixture drift: ${filename}`)
-  } else if (actual !== expected) {
+    if (actual === null || !sameTextContent(actual, expected)) throw new Error(`generated fixture drift: ${filename}`)
+  } else if (actual === null || !sameTextContent(actual, expected)) {
     await writeFile(target, expected)
   }
 }
@@ -39,7 +45,9 @@ for (const filename of [...Object.values(fixtures), 'manifest.json', 'recognized
     const target = new URL(filename, destination)
     if (check) {
       const [left, right] = await Promise.all([readFile(source), readFile(target).catch(() => null)])
-      if (!right || !left.equals(right)) throw new Error(`packaged fixture drift: ${target.pathname}`)
+      if (!right || !sameTextContent(left.toString('utf8'), right.toString('utf8'))) {
+        throw new Error(`packaged fixture drift: ${target.pathname}`)
+      }
     } else {
       await cp(source, target)
     }

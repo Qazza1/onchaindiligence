@@ -447,6 +447,51 @@ const corruptScreeningEvidence = record('evidence', [run.id], {
 const bundleInvalidChildPayload = buildBundlePayload([corruptScreeningEvidence, receiptEvidence])
 const bundleInvalidChild = sealPortable(bundleInvalidChildPayload, privateKey, keyId)
 
+// The outer bundle seal must never substitute for verification of an embedded
+// public receipt. This record deliberately has no record-level proof, while
+// its embedded receipt proof is corrupt before the outer bundle is resealed.
+const corruptReceipt = structuredClone(receipt)
+corruptReceipt.proof.signature = `${corruptReceipt.proof.signature[0] === 'A' ? 'B' : 'A'}${corruptReceipt.proof.signature.slice(1)}`
+const corruptReceiptEvidenceWithoutExternalProof = record('evidence', [run.id], {
+  ...receiptEvidence.statement,
+  response: {
+    ...receiptEvidence.statement.response,
+    value: corruptReceipt,
+    digest: digestObject(corruptReceipt),
+  },
+}, [])
+const bundleInvalidEmbeddedReceiptNoExternalProofPayload = buildBundlePayload([
+  screeningEvidence,
+  corruptReceiptEvidenceWithoutExternalProof,
+])
+const bundleInvalidEmbeddedReceiptNoExternalProof = sealPortable(
+  bundleInvalidEmbeddedReceiptNoExternalProofPayload,
+  privateKey,
+  keyId,
+)
+
+// A digest-only reference to a recognized receipt cannot become VALID merely
+// because a caller opts into digest-only evidence. The internal receipt proof
+// is unavailable, so this child remains UNVERIFIABLE.
+const referencedReceiptEvidence = record('evidence', [run.id], {
+  ...receiptEvidence.statement,
+  response: {
+    mode: 'reference',
+    media_type: 'application/json',
+    reference: 'https://example.invalid/public-action-receipt.json',
+    digest: digestObject(receipt),
+  },
+}, [])
+const bundleUnverifiableReferencedReceiptPayload = buildBundlePayload([
+  screeningEvidence,
+  referencedReceiptEvidence,
+])
+const bundleUnverifiableReferencedReceipt = sealPortable(
+  bundleUnverifiableReferencedReceiptPayload,
+  privateKey,
+  keyId,
+)
+
 // Case: bundle DSSE signature is VALID and trusted; one embedded child
 // artifact is correctly signed but by a key the caller's trust material
 // (in this fixture's own verification_material) does not include --
@@ -524,6 +569,8 @@ const generated = {
   bundleRemovedArtifact,
   bundleInsertedArtifact,
   bundleInvalidChild,
+  bundleInvalidEmbeddedReceiptNoExternalProof,
+  bundleUnverifiableReferencedReceipt,
   bundleUnverifiableChild,
   bundleUnknownArtifactType,
   bundleBadReconciliationReference,

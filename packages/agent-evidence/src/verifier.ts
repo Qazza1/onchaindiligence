@@ -263,6 +263,34 @@ function verifyAttestationProof(
   return result('source-proof', state, code, messageText, { keyId, recordId })
 }
 
+function verifyEmbeddedPublicReceipt(
+  record: AgentEvidenceRecord,
+  policy: TrustPolicy,
+): ComponentResult | null {
+  if (record.kind !== 'evidence' || record.statement.evidence_type !== 'onchaindiligence.public-action-receipt.v1') {
+    return null
+  }
+  const response = record.statement.response
+  if (response === null || Array.isArray(response) || typeof response !== 'object') {
+    return result('receipt-proof', 'INVALID', 'receipt-response-invalid',
+      'public receipt evidence response must be an object', { recordId: record.id })
+  }
+  if ((response as JsonObject).mode !== 'embedded') {
+    return result('receipt-proof', 'UNVERIFIABLE', 'receipt-content-unavailable',
+      'recognized public receipt evidence must embed the receipt to verify its proof offline', { recordId: record.id })
+  }
+  try {
+    const verified = verifyReceiptEnvelope((response as JsonObject).value, policy)
+    return result('receipt-proof', verified.state, verified.code, verified.message, {
+      recordId: record.id,
+      ...(verified.keyId === undefined ? {} : { keyId: verified.keyId }),
+    })
+  } catch (error) {
+    return result('receipt-proof', 'INVALID', 'receipt-proof-invalid',
+      error instanceof Error ? error.message : String(error), { recordId: record.id })
+  }
+}
+
 function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): ComponentResult[] {
   const components: ComponentResult[] = []
   for (const record of payload.records) {
@@ -271,28 +299,6 @@ function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): Compon
       if (proofType === 'external-digest') {
         components.push(result('source-proof', 'VALID', 'external-digest-bound',
           'digest is bound by the record ID but does not establish source attribution', { recordId: record.id }))
-        const response = record.statement.response as JsonObject
-        if (record.kind === 'evidence' && record.statement.evidence_type === 'onchaindiligence.public-action-receipt.v1'
-          && response.mode === 'embedded') {
-          const receiptEnvelope = response.value as JsonObject
-          const receiptProof = receiptEnvelope.proof as JsonObject
-          const receipt = receiptEnvelope.receipt
-          if (!receiptProof || !receipt) {
-            components.push(result('receipt-proof', 'INVALID', 'receipt-proof-missing',
-              'embedded public receipt must contain its own attestation proof', { recordId: record.id }))
-          } else {
-            try {
-              const verified = verifyReceiptEnvelope(receiptEnvelope, policy)
-              components.push(result('receipt-proof', verified.state, verified.code, verified.message, {
-                recordId: record.id,
-                ...(verified.keyId === undefined ? {} : { keyId: verified.keyId }),
-              }))
-            } catch (error) {
-              components.push(result('receipt-proof', 'INVALID', 'receipt-proof-invalid',
-                error instanceof Error ? error.message : String(error), { recordId: record.id }))
-            }
-          }
-        }
       } else if (
         proofType === 'onchaindiligence-attestation-v1'
         || proofType === 'onchaindiligence-attestation-v2'
@@ -346,6 +352,8 @@ function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): Compon
         }))
       }
     }
+    const receiptVerification = verifyEmbeddedPublicReceipt(record, policy)
+    if (receiptVerification) components.push(receiptVerification)
   }
   return components
 }

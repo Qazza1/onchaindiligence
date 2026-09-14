@@ -111,6 +111,22 @@
       "note": "Sealed AFTER corrupting one embedded attestation-v2 signature, so the bundle's own DSSE signature is genuinely valid over its exact (tampered-child) content. The child is INVALID while bundle_integrity remains VALID; the convenience overall state is INVALID."
     },
     {
+      "id": "bundle-invalid-embedded-receipt-no-external-proof",
+      "fixture": "bundle-invalid-embedded-receipt-no-external-proof.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "INVALID",
+      "reason": "embedded-receipt-proof-invalid",
+      "note": "The bundle DSSE is valid and the recognized receipt record has no external-digest or other record proof. Its embedded public Action Receipt proof is corrupt, so the receipt child is INVALID while bundle_integrity remains VALID."
+    },
+    {
+      "id": "bundle-unverifiable-referenced-receipt",
+      "fixture": "bundle-unverifiable-referenced-receipt.json",
+      "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
+      "expected": "UNVERIFIABLE",
+      "reason": "embedded-receipt-content-unavailable",
+      "note": "The outer DSSE is valid, but the recognized receipt is only a digest-bound reference. The verifier cannot independently inspect its required internal receipt proof, so the child is UNVERIFIABLE even under a caller policy that permits digest-only evidence."
+    },
+    {
       "id": "bundle-unverifiable-child",
       "fixture": "bundle-unverifiable-child.json",
       "trusted_key_ids": ["ed25519-3rLe053Cb84OYIW2"],
