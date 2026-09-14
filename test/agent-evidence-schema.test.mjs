@@ -249,6 +249,8 @@ test('corpus isolates signature, canonicalization, graph, version, trust, and pa
     'bundle-removed-artifact': 'INVALID',
     'bundle-inserted-artifact': 'INVALID',
     'bundle-invalid-child': 'INVALID',
+    'bundle-invalid-embedded-receipt-no-external-proof': 'INVALID',
+    'bundle-unverifiable-referenced-receipt': 'UNVERIFIABLE',
     'bundle-unverifiable-child': 'UNVERIFIABLE',
     'bundle-unknown-artifact-type': 'UNVERIFIABLE',
     'bundle-bad-reconciliation-reference': 'INVALID',
