@@ -1,6 +1,35 @@
 # OnchainDiligence product roadmap
 
-Last updated: 2026-09-10
+Last updated: 2026-09-15
+
+## Forward sequence
+
+NOW: D3.5C3 Arc Mainnet launch-day verification — PREP complete; public
+launch expected 2026-09-16. Verify official mainnet chain ID, RPC, and
+contract addresses directly from Arc's own launch documentation before any
+production configuration change. No hardcoded guesses; read-only checks
+first.
+
+PRIMARY: D3.4A First-Pilot Activation Path — **ACTIVE**. External
+customer/pilot friction drives the next integration work ahead of
+speculative build-out.
+
+NEXT BUILD IF NO PILOT BLOCKER: first-class Agent Evidence production
+ergonomics — reusable Mandate/Policy/Decision construction helpers. This is
+`docs/MIGRATION_PLAN.md` P1 item 9, open since 2026-08-30 and confirmed still
+absent from both the TypeScript and Python packages as of
+`@onchaindiligence/agent-evidence@0.3.0` — only the generic
+`createRecord`/`create_record` exists in either language. Does not change
+Agent Evidence v0 semantics.
+
+LATER: D4.3 Evidence of Absence — PREP only, no semantics frozen. A2A
+official conformance spike (demand-driven). Bundle-aware browser inspection
+(onboarding-driven).
+
+WATCH / BLOCKED: Know-Your-Agent (WATCH/PREP), MCP 2026-07-28
+(PREP/DEPENDENCY-BLOCKED), MCP Tasks (parked with MCP 2026-07-28), FLOP
+testnet integration (wait for a real official testnet/SDK). See WATCH/FUTURE
+below for detail.
 
 ## SHIPPED
 
@@ -37,9 +66,8 @@ Last updated: 2026-09-10
 
 ## CURRENT
 
-- D3.4C1 x402, D3.4C2 PayBox, D3.4C3 Turnkey, and D3.4C4 Crossmint provider
-  evidence — **COMPLETE / LIVE**. D3.4C5 Coinbase/CDP remains **ACTIVE** in
-  its separate provider-adapter workstream.
+- D3.4C1 x402, D3.4C2 PayBox, D3.4C3 Turnkey, D3.4C4 Crossmint, D3.4C5
+  Coinbase/CDP, and D3.4C6 Circle provider evidence — **COMPLETE / LIVE**.
 - D3.5C1 Ethereum Mainnet canonical USDC settlement observation —
   **COMPLETE / LIVE**: `eip155:1` canonical Circle USDC is independently
   decoded from transaction receipts under the
@@ -54,7 +82,10 @@ Last updated: 2026-09-10
   policy. Tempo's native `finalized` head is the evidentiary basis; inclusion
   or a confirmation count is never substituted for finality. Existing D3.3
   reconciliation and binding semantics apply unchanged.
-- D3.5C3 Circle Arc settlement observation — **PLANNED**.
+- D3.5C3 Circle Arc settlement observation — **PREP COMPLETE**. Arc Public
+  Mainnet launch is expected 2026-09-16; launch-day verification uses only
+  official Arc mainnet chain ID, RPC, and contract parameters, confirmed
+  read-only, with no hardcoded guesses ahead of the official launch record.
 - D3.5C4 Solana settlement observation — **COMPLETE / LIVE**:
   `solana:mainnet` canonical Circle USDC SPL transfers
   are decoded from `jsonParsed` transactions at Solana's native `finalized`
@@ -80,6 +111,20 @@ Last updated: 2026-09-10
   aggregators, multi-hop routes, native-asset boundaries, and ambiguous
   transfer sets are evidence gaps/unsupported shapes, never inferred. It
   remains distinct from payment receipts and payment binding vocabulary.
+- D3.6C Bridge (Base to Ethereum) — **COMPLETE / LIVE**.
+- D3.6D Staking (Lido) — **COMPLETE / LIVE**.
+- D4.0 Self-Enforcing Trust Invariants — **COMPLETE**: production trust
+  canary and CI docs-drift guard.
+- D4.1 Offline Verifier — **COMPLETE / PUBLISHED**: caller-supplied trust,
+  zero-network verification, explicit `VALID` / `INVALID` / `UNVERIFIABLE`
+  outcomes, and offline CLI verification shipped before the Signed Evidence
+  Bundles layer.
+- D4.2 Signed Evidence Bundles — **COMPLETE / PUBLISHED / PUBLIC SURFACE
+  SYNCED**: `bundle_integrity` and per-artifact `artifact_verifications[]`
+  reported separately, reconciliation (`agreements` / `contradictions` /
+  `insufficient_evidence`), and `limitations`, verified offline. Published as
+  `@onchaindiligence/agent-evidence@0.3.0`, `@onchaindiligence/sdk@0.7.0`, and
+  `@onchaindiligence/cli@0.4.0`.
 - Agent Evidence Interoperability Profile v1 (above) — recently shipped;
   watching for the next real integrator before iterating further on it.
 - FLOP-A OnChainDiligence Technocore Participation — **COMPLETE**:
@@ -108,6 +153,12 @@ Last updated: 2026-09-10
 - FLOP inference testnet integration, if and when an actual stable public
   SDK/API and testnet exist (see Phase 2 below — the underlying caution has
   not changed; FLOP inference integration does not exist today).
+- D4.3 Evidence of Absence — **PREP** before implementation. No semantics
+  frozen yet.
+- A2A official conformance spike — later / demand-driven.
+- Bundle-aware browser inspection — later / onboarding-driven.
+- Circle Mainnet listener — configured/live, awaiting the first organic
+  outbound event.
 - Additional real agent integrations, driven by external demand rather than
   built speculatively ahead of it.
 
