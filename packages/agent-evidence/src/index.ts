@@ -29,8 +29,23 @@ export {
   TrustPolicyError,
 } from './errors.js'
 export { validateBundlePayload } from './graph.js'
-export { createBundlePayload, createRecord } from './records.js'
-export type { CreateBundlePayloadOptions, CreateRecordOptions } from './records.js'
+export {
+  createBundlePayload,
+  createDecisionRecord,
+  createMandateRecord,
+  createPolicyRecord,
+  createRecord,
+} from './records.js'
+export type {
+  CreateBundlePayloadOptions,
+  CreateDecisionRecordInput,
+  CreateDecisionRecordOptions,
+  CreateMandateRecordInput,
+  CreateMandateRecordOptions,
+  CreatePolicyRecordInput,
+  CreatePolicyRecordOptions,
+  CreateRecordOptions,
+} from './records.js'
 export {
   createTechnocoreEvidence,
   sweepTechnocoreText,
