@@ -93,6 +93,18 @@ Last updated: 2026-09-10
 
 ## WATCH / FUTURE
 
+- Know-Your-Agent / external agent identity interoperability — **WATCH / PREP**
+  following the Visa, Mastercard, and Ant International initiative announced
+  on 2026-09-10. Await a concrete interoperable credential format,
+  registration mechanism, portable agent identifier, or mandate/intent
+  reference before designing an OCD schema or adapter. The governing trust
+  boundary is recorded in `docs/PRODUCT_DIRECTION.md`.
+- MCP 2026-07-28 compatibility — **PREP / DEPENDENCY-BLOCKED**. Keep the
+  production legacy-compatible MCP stack unchanged while official
+  `@x402/mcp` remains bound to MCP SDK v1. Reopen for dual-era
+  `2025-11-25` plus `2026-07-28` support only when upstream provides official
+  MCP SDK v2 compatibility that preserves paid-tool behavior; Tasks remains
+  parked until then.
 - FLOP inference testnet integration, if and when an actual stable public
   SDK/API and testnet exist (see Phase 2 below — the underlying caution has
   not changed; FLOP inference integration does not exist today).

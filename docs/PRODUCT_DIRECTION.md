@@ -60,6 +60,36 @@ causality unless the supplied authorization and execution proofs establish it.
 An external anchor proves a commitment existed no later than a checkpoint; it
 does not make the committed claim true.
 
+## Ecosystem interoperability watch
+
+### External agent identity / Know-Your-Agent (WATCH / PREP)
+
+OCD may later reference an externally issued agent-identity or KYA credential
+and an authenticated mandate/intent artifact, once a concrete interoperable
+credential format, registration mechanism, portable agent identifier, or
+mandate/intent reference exists. It will not treat either artifact as
+authoritative merely because it is present.
+
+`external agent identity / KYA credential -> authenticated mandate / intent -> OCD evidence + policy -> executor authorization -> execution -> independent observation -> receipt`
+
+Identity assertion is not authorization; authorization is not execution;
+provider claim is not settlement; and signature authenticity is not objective
+truth. Action Receipt v1 remains frozen. No KYA schema or adapter is planned
+until the interoperability inputs above are concrete.
+
+### MCP 2026-07-28 (PREP / DEPENDENCY-BLOCKED)
+
+OCD preserves its existing production MCP behavior. MCP 2026-07-28 supports a
+stateless lifecycle and uses `server/discover` instead of mandatory legacy
+initialization; the official TypeScript SDK v2 supports that revision and MCP
+Tasks is Final. OCD currently uses `@modelcontextprotocol/sdk` v1, while the
+official `@x402/mcp` still depends on v1.
+
+Do not implement a partial modern stack. Watch `@x402/mcp` for official SDK v2
+compatibility; once it preserves paid-tool behavior and existing contracts,
+implement dual-era support for legacy `2025-11-25` and modern `2026-07-28`.
+Keep Tasks parked until core lifecycle compatibility is complete.
+
 ## Existing production product
 
 The current compliance API is the first production Evidence Provider. Existing
