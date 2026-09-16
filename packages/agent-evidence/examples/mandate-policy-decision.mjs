@@ -1,18 +1,19 @@
 import {
   createDecisionRecord,
   createEvidenceRecord,
+  createExecutionRecord,
   createMandateRecord,
   createPolicyRecord,
   createRecord,
   createRunRecord,
 } from '@onchaindiligence/agent-evidence'
 
-// Mandate -> Run -> Evidence -> Policy -> Decision, using the first-class
-// construction helpers instead of hand-building each statement/parents list.
-// Each helper still just calls createRecord() underneath -- these are
-// convenience constructors over the same canonical record model, not a
-// second representation. Principal and Agent have no dedicated helpers yet,
-// so they stay direct createRecord() calls.
+// Mandate -> Run -> Evidence -> Policy -> Decision -> Execution, using the
+// first-class construction helpers instead of hand-building each
+// statement/parents list. Each helper still just calls createRecord()
+// underneath -- these are convenience constructors over the same canonical
+// record model, not a second representation. Principal and Agent have no
+// dedicated helpers yet, so they stay direct createRecord() calls.
 
 const principal = createRecord('principal', {
   principal_id: 'urn:example:treasury', principal_type: 'organization',
@@ -77,7 +78,19 @@ const decision = createDecisionRecord({
   decidedAt: '2026-08-28T12:00:02.000Z',
 })
 
+// Execution: decision_ref/parents are derived from `decision`. The decision
+// was not authorized, so this honestly records a withheld, never-submitted
+// action rather than fabricating a transaction that never happened.
+const execution = createExecutionRecord({
+  decision,
+  executionId: 'execution-INV-1042',
+  executionType: 'payment-withheld',
+  status: 'withheld-not-submitted',
+  submittedAt: '2026-08-28T12:00:03.000Z',
+})
+
 console.log('mandate:', mandate.id)
 console.log('evidence:', evidence.id)
 console.log('policy:', policy.id)
 console.log('decision:', decision.id, '-> parents:', decision.parents)
+console.log('execution:', execution.id, '-> status:', execution.statement.status)

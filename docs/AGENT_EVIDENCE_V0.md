@@ -264,8 +264,8 @@ its evidence cannot be valid Agent Evidence v0.
 
 ### 6.8 Execution
 
-`kind: "execution"`; parents MUST include exactly one decision plus any receipt
-records explicitly used.
+`kind: "execution"`; parents MUST contain exactly the referenced decision
+(`decision_ref`).
 
 Required fields: `execution_id`, `decision_ref`, `execution_type`, `status`, and
 `submitted_at`. Onchain execution additionally requires `network` as CAIP-2,
