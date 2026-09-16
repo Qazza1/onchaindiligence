@@ -406,3 +406,59 @@ export function createRunRecord(
   }
   return createRecord('run', statement, { ...options, parents: [input.agent.id, input.mandate.id] })
 }
+
+export interface CreateExecutionRecordOptions extends CreateRecordOptions {}
+
+export interface CreateExecutionRecordInput {
+  /** parents are exactly this record's id -- graph.ts enforces exactly one decision parent, stricter than the schema's own minItems:1. */
+  decision: AgentEvidenceRecord
+  executionId: string
+  executionType: string
+  /** Free-form, exactly as the caller asserts it -- never inferred from any other field. */
+  status: string
+  submittedAt: string | Date
+  confirmedAt?: string | Date
+  network?: string
+  transactionHash?: string
+  /** Digest of the intended/submitted transaction, supplied as-is -- never derived, since there is no `value` field this represents. */
+  transactionDigest?: { sha256: string }
+  sender?: string
+  recipient?: string
+  asset?: string
+  amount?: string
+  blockNumber?: string
+}
+
+/**
+ * Build a `kind: "execution"` record. `decision_ref` and the single parent
+ * are derived from `decision`. Every other field is passed through exactly
+ * as given: no status inferred from transaction_hash/confirmed_at presence,
+ * no settlement or payment-binding claim, no causality beyond this record's
+ * own decision reference. graph.ts separately requires network/
+ * transaction_hash/transaction_digest when `executionType` starts with
+ * "onchain" -- that check runs at bundle-assembly time, same as every other
+ * cross-record rule this package does not duplicate here.
+ */
+export function createExecutionRecord(
+  input: CreateExecutionRecordInput,
+  options: CreateExecutionRecordOptions = {},
+): AgentEvidenceRecord {
+  requireKind(input.decision, 'decision', 'decision')
+  const statement: JsonObject = {
+    execution_id: input.executionId,
+    decision_ref: input.decision.id,
+    execution_type: input.executionType,
+    status: input.status,
+    submitted_at: timestamp(input.submittedAt),
+    ...(input.network === undefined ? {} : { network: input.network }),
+    ...(input.transactionHash === undefined ? {} : { transaction_hash: input.transactionHash }),
+    ...(input.transactionDigest === undefined ? {} : { transaction_digest: input.transactionDigest }),
+    ...(input.sender === undefined ? {} : { sender: input.sender }),
+    ...(input.recipient === undefined ? {} : { recipient: input.recipient }),
+    ...(input.asset === undefined ? {} : { asset: input.asset }),
+    ...(input.amount === undefined ? {} : { amount: input.amount }),
+    ...(input.confirmedAt === undefined ? {} : { confirmed_at: timestamp(input.confirmedAt) }),
+    ...(input.blockNumber === undefined ? {} : { block_number: input.blockNumber }),
+  }
+  return createRecord('execution', statement, { ...options, parents: [input.decision.id] })
+}
