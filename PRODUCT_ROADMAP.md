@@ -1,30 +1,35 @@
 # OnchainDiligence product roadmap
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
 ## Forward sequence
 
-NOW: D3.5C3 Arc Mainnet launch-day verification — PREP complete; public
-launch expected 2026-09-16. Verify official mainnet chain ID, RPC, and
-contract addresses directly from Arc's own launch documentation before any
-production configuration change. No hardcoded guesses; read-only checks
-first.
+NOW: D3.5C3 Arc Mainnet — split status, **IN PROGRESS** (not COMPLETE).
+D3.5C3-CORE-NETWORK is **VERIFIED / LIVE**: Arc Public Mainnet is reachable
+(chain ID `5042` / `eip155:5042`), the official primary RPC
+`https://rpc.mainnet.arc.io` is live, and canonical USDC
+(`0x3600000000000000000000000000000000000000`) is confirmed deployed.
+D3.5C3-REGISTRIES is **BLOCKED**: official ERC-8004 mainnet registry
+addresses, the ERC-8183 mainnet address, and a confirmed mainnet explorer are
+not yet published; do not substitute testnet values. `src/arc` remains
+unwired from production, so no production Arc integration is live.
 
 PRIMARY: D3.4A First-Pilot Activation Path — **ACTIVE**. External
 customer/pilot friction drives the next integration work ahead of
 speculative build-out.
 
-NEXT BUILD IF NO PILOT BLOCKER: first-class Agent Evidence production
-ergonomics — reusable Mandate/Policy/Decision construction helpers. This is
-`docs/MIGRATION_PLAN.md` P1 item 9, open since 2026-08-30 and confirmed still
-absent from both the TypeScript and Python packages as of
-`@onchaindiligence/agent-evidence@0.3.0` — only the generic
-`createRecord`/`create_record` exists in either language. Does not change
-Agent Evidence v0 semantics.
+NEXT BUILD IF NO PILOT BLOCKER: none currently queued. The prior candidate —
+first-class Agent Evidence production ergonomics (`docs/MIGRATION_PLAN.md` P1
+item 9) — is **IMPLEMENTED / AUDITED / MERGED** (PR #3): `createMandateRecord`,
+`createPolicyRecord`, and `createDecisionRecord` in the TypeScript package.
+See CURRENT below. No Python parity and no new npm release; pilot activation
+remains PRIMARY.
 
 LATER: D4.3 Evidence of Absence — PREP only, no semantics frozen. A2A
 official conformance spike (demand-driven). Bundle-aware browser inspection
-(onboarding-driven).
+(onboarding-driven). Agent Plugins 1.0 distribution package (below
+First-Pilot Activation; small implementation candidate when there is no
+pilot blocker).
 
 WATCH / BLOCKED: Know-Your-Agent (WATCH/PREP), MCP 2026-07-28
 (PREP/DEPENDENCY-BLOCKED), MCP Tasks (parked with MCP 2026-07-28), FLOP
@@ -82,10 +87,20 @@ below for detail.
   policy. Tempo's native `finalized` head is the evidentiary basis; inclusion
   or a confirmation count is never substituted for finality. Existing D3.3
   reconciliation and binding semantics apply unchanged.
-- D3.5C3 Circle Arc settlement observation — **PREP COMPLETE**. Arc Public
-  Mainnet launch is expected 2026-09-16; launch-day verification uses only
-  official Arc mainnet chain ID, RPC, and contract parameters, confirmed
-  read-only, with no hardcoded guesses ahead of the official launch record.
+- D3.5C3 Circle Arc settlement observation — **IN PROGRESS** (split status,
+  not COMPLETE):
+  - D3.5C3-CORE-NETWORK — **VERIFIED / LIVE**. Arc Public Mainnet is
+    reachable; chain ID `5042` / `eip155:5042`; official primary RPC
+    `https://rpc.mainnet.arc.io` confirmed live via read-only `eth_chainId`
+    and advancing `eth_blockNumber`; canonical USDC
+    (`0x3600000000000000000000000000000000000000`) confirmed deployed via
+    `eth_getCode`.
+  - D3.5C3-REGISTRIES — **BLOCKED**. Official ERC-8004 mainnet registry
+    addresses and the official ERC-8183 mainnet address are not yet
+    published; the mainnet block explorer is not yet confirmed either. No
+    testnet value is substituted for any of these.
+  - `src/arc` remains unwired from the production MCP server; no production
+    Arc integration is live regardless of network verification status.
 - D3.5C4 Solana settlement observation — **COMPLETE / LIVE**:
   `solana:mainnet` canonical Circle USDC SPL transfers
   are decoded from `jsonParsed` transactions at Solana's native `finalized`
@@ -125,6 +140,11 @@ below for detail.
   `insufficient_evidence`), and `limitations`, verified offline. Published as
   `@onchaindiligence/agent-evidence@0.3.0`, `@onchaindiligence/sdk@0.7.0`, and
   `@onchaindiligence/cli@0.4.0`.
+- Agent Evidence production ergonomics (Mandate/Policy/Decision construction
+  helpers) — **IMPLEMENTED / AUDITED / MERGED** (PR #3): `createMandateRecord`,
+  `createPolicyRecord`, and `createDecisionRecord` in
+  `@onchaindiligence/agent-evidence`. TypeScript only; no Python parity
+  claimed. The package remains published at `0.3.0` until a separate release.
 - Agent Evidence Interoperability Profile v1 (above) — recently shipped;
   watching for the next real integrator before iterating further on it.
 - FLOP-A OnChainDiligence Technocore Participation — **COMPLETE**:
@@ -157,6 +177,21 @@ below for detail.
   frozen yet.
 - A2A official conformance spike — later / demand-driven.
 - Bundle-aware browser inspection — later / onboarding-driven.
+- Agent Plugins 1.0 — **LATER / DISTRIBUTION-INTEROP**. A published
+  vendor-neutral package format (`plugin.json`, Agent Skills under
+  `skills/*/SKILL.md`, MCP servers via `mcp.json`) that could carry one
+  narrowly scoped payment-diligence `SKILL.md` plus a declaration for the
+  existing remote OCD MCP server, with instructions encoding
+  inspect/preflight before independent execution and verify/reconcile after
+  execution. Packaging/instructions only — policy, receipt, evidence, and
+  verification logic stay in the existing OCD backend; this does not create
+  a second integration stack and does not replace the ChatGPT Plugin
+  Directory, Claude connector/distribution, MCP Registry, authentication,
+  permissions, or client-specific installation. Do not claim any client
+  already supports the format unless independently verified. Targets
+  published Agent Plugins 1.0.0, not the 1.1.0 working draft. Priority below
+  First-Pilot Activation; a small implementation candidate only when there
+  is no pilot blocker.
 - Circle Mainnet listener — configured/live, awaiting the first organic
   outbound event.
 - Additional real agent integrations, driven by external demand rather than
