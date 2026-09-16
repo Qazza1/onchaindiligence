@@ -10,7 +10,7 @@ The package is publicly available on npm:
 ```sh
 npm install @onchaindiligence/agent-evidence
 # or pin this release
-npm install @onchaindiligence/agent-evidence@0.2.0
+npm install @onchaindiligence/agent-evidence@0.4.0
 ```
 
 This source README reflects the public release. The immutable README embedded
@@ -18,6 +18,19 @@ in the already-published `0.1.0` tarball carried its pre-release wording; this
 release includes the corrected package documentation.
 
 Node.js 20.19 or newer and ESM are required.
+
+## 0.4.0
+
+- Adds typed convenience constructors for six of the eight Agent Evidence v0
+  record kinds: `createMandateRecord`, `createRunRecord`,
+  `createEvidenceRecord`, `createPolicyRecord`, `createDecisionRecord`, and
+  `createExecutionRecord`. Each is a thin wrapper over the existing
+  `createRecord(kind, statement, options)` -- deriving parent IDs and
+  cross-references from the actual parent record objects the caller passes
+  in, instead of asking the caller to retype IDs by hand. A record built
+  through one of these helpers is byte-for-byte and content-ID identical to
+  the same record built through `createRecord` directly. Agent Evidence v0
+  protocol semantics, schemas, and canonicalization are unchanged.
 
 ## 0.2.0
 
@@ -46,6 +59,27 @@ server, or an evidence provider.
 
 - `createRecord(kind, statement, options)` creates a schema-valid v0 record and
   derives its deterministic content ID.
+- `createMandateRecord`, `createRunRecord`, `createEvidenceRecord`,
+  `createPolicyRecord`, `createDecisionRecord`, and `createExecutionRecord`
+  are typed convenience constructors over the same `createRecord` model for
+  six of the eight record kinds. Each accepts the actual parent record(s) --
+  e.g. the `run` and `mandate` records themselves, not their id strings -- and
+  derives `*_ref` fields, `parents`, and (for Policy/Evidence) digests from
+  them, so a record built with a helper is exactly the same record, with the
+  same content ID, as building it by hand through `createRecord`:
+
+  ```js
+  import { createMandateRecord, createRunRecord } from '@onchaindiligence/agent-evidence'
+
+  const mandate = createMandateRecord({
+    principal, mandateId: 'INV-1042', scope: { action: 'pay' },
+    validFrom: '2026-08-28T00:00:00.000Z', validUntil: '2026-08-29T00:00:00.000Z',
+  })
+  const run = createRunRecord({ agent, mandate, runExternalId: 'run-INV-1042', startedAt: '2026-08-28T12:00:00.000Z' })
+  ```
+
+  See [`examples/mandate-policy-decision.mjs`](./examples/mandate-policy-decision.mjs)
+  for the full Mandate → Run → Evidence → Policy → Decision → Execution chain.
 - `contentId(value)` and `canonicalize(value)` expose the protocol's exact
   RFC 8785 content-addressing boundary.
 - `createBundlePayload(records, options)` sorts records and validates IDs,
