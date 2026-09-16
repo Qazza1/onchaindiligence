@@ -20,16 +20,17 @@ speculative build-out.
 
 NEXT BUILD IF NO PILOT BLOCKER: none currently queued. The prior candidate —
 first-class Agent Evidence production ergonomics (`docs/MIGRATION_PLAN.md` P1
-item 9) — is **IMPLEMENTED / AUDITED / MERGED** (PR #3): `createMandateRecord`,
-`createPolicyRecord`, and `createDecisionRecord` in the TypeScript package.
-See CURRENT below. No Python parity and no new npm release; pilot activation
-remains PRIMARY.
+item 9) — is **IMPLEMENTED / AUDITED / MERGED / PUBLISHED**: all six typed
+record helpers (`createMandateRecord`, `createRunRecord`,
+`createEvidenceRecord`, `createPolicyRecord`, `createDecisionRecord`,
+`createExecutionRecord`) are published in `@onchaindiligence/agent-evidence@0.4.0`.
+See CURRENT below. No Python parity claimed; pilot activation remains PRIMARY.
 
 LATER: D4.3 Evidence of Absence — PREP only, no semantics frozen. A2A
 official conformance spike (demand-driven). Bundle-aware browser inspection
-(onboarding-driven). Agent Plugins 1.0 distribution package (below
-First-Pilot Activation; small implementation candidate when there is no
-pilot blocker).
+(onboarding-driven). Agent Plugins 1.0 — **IMPLEMENTED / VALIDATED / MERGED**,
+not yet distributed through any client-specific channel (below First-Pilot
+Activation).
 
 WATCH / BLOCKED: Know-Your-Agent (WATCH/PREP), MCP 2026-07-28
 (PREP/DEPENDENCY-BLOCKED), MCP Tasks (parked with MCP 2026-07-28), FLOP
@@ -140,11 +141,12 @@ below for detail.
   `insufficient_evidence`), and `limitations`, verified offline. Published as
   `@onchaindiligence/agent-evidence@0.3.0`, `@onchaindiligence/sdk@0.7.0`, and
   `@onchaindiligence/cli@0.4.0`.
-- Agent Evidence production ergonomics (Mandate/Policy/Decision construction
-  helpers) — **IMPLEMENTED / AUDITED / MERGED** (PR #3): `createMandateRecord`,
-  `createPolicyRecord`, and `createDecisionRecord` in
-  `@onchaindiligence/agent-evidence`. TypeScript only; no Python parity
-  claimed. The package remains published at `0.3.0` until a separate release.
+- Agent Evidence production ergonomics (typed record construction helpers) —
+  **IMPLEMENTED / AUDITED / MERGED / PUBLISHED**: all six typed record
+  helpers — `createMandateRecord`, `createRunRecord`, `createEvidenceRecord`,
+  `createPolicyRecord`, `createDecisionRecord`, `createExecutionRecord` — in
+  `@onchaindiligence/agent-evidence@0.4.0`. TypeScript only; no Python parity
+  claimed.
 - Agent Evidence Interoperability Profile v1 (above) — recently shipped;
   watching for the next real integrator before iterating further on it.
 - FLOP-A OnChainDiligence Technocore Participation — **COMPLETE**:
@@ -177,21 +179,21 @@ below for detail.
   frozen yet.
 - A2A official conformance spike — later / demand-driven.
 - Bundle-aware browser inspection — later / onboarding-driven.
-- Agent Plugins 1.0 — **LATER / DISTRIBUTION-INTEROP**. A published
-  vendor-neutral package format (`plugin.json`, Agent Skills under
-  `skills/*/SKILL.md`, MCP servers via `mcp.json`) that could carry one
-  narrowly scoped payment-diligence `SKILL.md` plus a declaration for the
-  existing remote OCD MCP server, with instructions encoding
-  inspect/preflight before independent execution and verify/reconcile after
-  execution. Packaging/instructions only — policy, receipt, evidence, and
-  verification logic stay in the existing OCD backend; this does not create
-  a second integration stack and does not replace the ChatGPT Plugin
-  Directory, Claude connector/distribution, MCP Registry, authentication,
-  permissions, or client-specific installation. Do not claim any client
-  already supports the format unless independently verified. Targets
-  published Agent Plugins 1.0.0, not the 1.1.0 working draft. Priority below
-  First-Pilot Activation; a small implementation candidate only when there
-  is no pilot blocker.
+- Agent Plugins 1.0 — **IMPLEMENTED / VALIDATED / MERGED, NOT YET
+  DISTRIBUTED**. A published vendor-neutral package format (`plugin.json`,
+  Agent Skills under `skills/*/SKILL.md`, MCP servers via `mcp.json`),
+  targeting published Agent Plugins 1.0.0 (not the 1.1.0 working draft).
+  The package (`agent-plugin/`) carries one narrowly scoped
+  payment-diligence `SKILL.md` plus a declaration for the existing remote
+  OCD MCP server, with instructions encoding inspect/preflight before
+  independent execution and verify/reconcile after execution. It validates
+  against the official 1.0.0 schemas. Packaging/instructions only — policy,
+  receipt, evidence, and verification logic stay in the existing OCD
+  backend; this does not create a second integration stack. It is not yet
+  distributed through the ChatGPT Plugin Directory, Claude
+  connector/distribution, MCP Registry, or any other client-specific
+  channel — do not claim any client already supports the format unless
+  independently verified. Priority below First-Pilot Activation.
 - Circle Mainnet listener — configured/live, awaiting the first organic
   outbound event.
 - Additional real agent integrations, driven by external demand rather than
