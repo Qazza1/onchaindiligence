@@ -32,6 +32,7 @@ export { validateBundlePayload } from './graph.js'
 export {
   createBundlePayload,
   createDecisionRecord,
+  createEvidenceRecord,
   createMandateRecord,
   createPolicyRecord,
   createRecord,
@@ -40,11 +41,15 @@ export type {
   CreateBundlePayloadOptions,
   CreateDecisionRecordInput,
   CreateDecisionRecordOptions,
+  CreateEvidenceRecordInput,
+  CreateEvidenceRecordOptions,
   CreateMandateRecordInput,
   CreateMandateRecordOptions,
   CreatePolicyRecordInput,
   CreatePolicyRecordOptions,
   CreateRecordOptions,
+  EvidenceRequestInput,
+  EvidenceResponseInput,
 } from './records.js'
 export {
   createTechnocoreEvidence,

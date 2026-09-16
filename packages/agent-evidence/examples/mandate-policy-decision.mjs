@@ -1,14 +1,17 @@
 import {
   createDecisionRecord,
+  createEvidenceRecord,
   createMandateRecord,
   createPolicyRecord,
   createRecord,
 } from '@onchaindiligence/agent-evidence'
 
-// Mandate -> Policy -> Decision, using the first-class construction helpers
-// instead of hand-building each statement/parents list. Each helper still
-// just calls createRecord() underneath -- these are convenience constructors
-// over the same canonical record model, not a second representation.
+// Mandate -> Run -> Evidence -> Policy -> Decision, using the first-class
+// construction helpers instead of hand-building each statement/parents list.
+// Each helper still just calls createRecord() underneath -- these are
+// convenience constructors over the same canonical record model, not a
+// second representation. Run has no dedicated helper yet, so it stays a
+// direct createRecord() call.
 
 const principal = createRecord('principal', {
   principal_id: 'urn:example:treasury', principal_type: 'organization',
@@ -32,15 +35,21 @@ const run = createRecord('run', {
   started_at: '2026-08-28T12:00:00.000Z',
 }, { parents: [agent.id, mandate.id] })
 
-const observation = { recipient_verified: false }
-const evidence = createRecord('evidence', {
-  evidence_type: 'recipient-check', run_ref: run.id, trust_mode: 'agent-assertion',
+// Evidence: run_ref/parents are derived from `run`, and both digests are
+// derived from the caller's own request/response values -- never invented,
+// never left for the caller to compute and possibly get wrong.
+const evidence = createEvidenceRecord({
+  run,
+  evidenceType: 'recipient-check',
+  trustMode: 'agent-assertion',
   source: { id: 'urn:example:ledger', type: 'internal-ledger' },
   tool: { name: 'recipient-check', version: '1' },
-  request: { digest: { sha256: 'A'.repeat(43) }, media_type: 'application/json' },
-  response: { mode: 'embedded', media_type: 'application/json', value: observation, digest: { sha256: 'B'.repeat(43) } },
-  observed_at: '2026-08-28T12:00:01.000Z', expires_at: null, scope: { invoice: 'INV-1042' },
-}, { parents: [run.id] })
+  request: { mediaType: 'application/json', value: { invoice: 'INV-1042' } },
+  response: { mode: 'embedded', mediaType: 'application/json', value: { recipient_verified: false } },
+  observedAt: '2026-08-28T12:00:01.000Z',
+  expiresAt: null,
+  scope: { invoice: 'INV-1042' },
+})
 
 // Policy: parents are the supplied run/mandate records; the digest is
 // derived from the embedded `policy` value, so it can never drift from it.
@@ -65,5 +74,6 @@ const decision = createDecisionRecord({
 })
 
 console.log('mandate:', mandate.id)
+console.log('evidence:', evidence.id)
 console.log('policy:', policy.id)
 console.log('decision:', decision.id, '-> parents:', decision.parents)
