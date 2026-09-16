@@ -36,6 +36,7 @@ export {
   createMandateRecord,
   createPolicyRecord,
   createRecord,
+  createRunRecord,
 } from './records.js'
 export type {
   CreateBundlePayloadOptions,
@@ -47,6 +48,8 @@ export type {
   CreateMandateRecordOptions,
   CreatePolicyRecordInput,
   CreatePolicyRecordOptions,
+  CreateRunRecordInput,
+  CreateRunRecordOptions,
   CreateRecordOptions,
   EvidenceRequestInput,
   EvidenceResponseInput,

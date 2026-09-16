@@ -4,14 +4,15 @@ import {
   createMandateRecord,
   createPolicyRecord,
   createRecord,
+  createRunRecord,
 } from '@onchaindiligence/agent-evidence'
 
 // Mandate -> Run -> Evidence -> Policy -> Decision, using the first-class
 // construction helpers instead of hand-building each statement/parents list.
 // Each helper still just calls createRecord() underneath -- these are
 // convenience constructors over the same canonical record model, not a
-// second representation. Run has no dedicated helper yet, so it stays a
-// direct createRecord() call.
+// second representation. Principal and Agent have no dedicated helpers yet,
+// so they stay direct createRecord() calls.
 
 const principal = createRecord('principal', {
   principal_id: 'urn:example:treasury', principal_type: 'organization',
@@ -30,10 +31,13 @@ const mandate = createMandateRecord({
   validUntil: '2026-08-29T00:00:00.000Z',
 })
 
-const run = createRecord('run', {
-  run_external_id: 'run-INV-1042', agent_ref: agent.id, mandate_ref: mandate.id,
-  started_at: '2026-08-28T12:00:00.000Z',
-}, { parents: [agent.id, mandate.id] })
+// Run: parents are derived from `agent` and `mandate`, not typed by hand.
+const run = createRunRecord({
+  agent,
+  mandate,
+  runExternalId: 'run-INV-1042',
+  startedAt: '2026-08-28T12:00:00.000Z',
+})
 
 // Evidence: run_ref/parents are derived from `run`, and both digests are
 // derived from the caller's own request/response values -- never invented,

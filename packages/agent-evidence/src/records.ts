@@ -372,3 +372,37 @@ export function createEvidenceRecord(
     parents: [input.run.id, ...priorEvidence.map((evidence) => evidence.id)],
   })
 }
+
+export interface CreateRunRecordOptions extends CreateRecordOptions {}
+
+export interface CreateRunRecordInput {
+  /** Parents are exactly this record's id plus `mandate`'s. */
+  agent: AgentEvidenceRecord
+  /** Parents are exactly this record's id plus `agent`'s. */
+  mandate: AgentEvidenceRecord
+  runExternalId: string
+  startedAt: string | Date
+  endedAt?: string | Date
+}
+
+/**
+ * Build a `kind: "run"` record. Parents are derived from `agent` and
+ * `mandate`, matching the rule graph.ts enforces exactly: run parents must be
+ * exactly `agent_ref` and `mandate_ref`, no more and no fewer. `ended_at` is
+ * never inferred -- omit it, don't guess it.
+ */
+export function createRunRecord(
+  input: CreateRunRecordInput,
+  options: CreateRunRecordOptions = {},
+): AgentEvidenceRecord {
+  requireKind(input.agent, 'agent', 'agent')
+  requireKind(input.mandate, 'mandate', 'mandate')
+  const statement: JsonObject = {
+    run_external_id: input.runExternalId,
+    agent_ref: input.agent.id,
+    mandate_ref: input.mandate.id,
+    started_at: timestamp(input.startedAt),
+    ...(input.endedAt === undefined ? {} : { ended_at: timestamp(input.endedAt) }),
+  }
+  return createRecord('run', statement, { ...options, parents: [input.agent.id, input.mandate.id] })
+}
