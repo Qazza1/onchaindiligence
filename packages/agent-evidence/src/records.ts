@@ -9,10 +9,19 @@ function timestamp(value: string | Date): string {
   return value instanceof Date ? formatTimestamp(value) : value
 }
 
+function nullableTimestamp(value: string | Date | null): string | null {
+  return value === null ? null : timestamp(value)
+}
+
 function requireKind(record: AgentEvidenceRecord, kind: RecordKind, field: string): void {
   if (record.kind !== kind) {
     throw new EvidenceValidationError(`${field} must reference a '${kind}' record, got '${record.kind}'`)
   }
+}
+
+/** `{sha256: <base64url>}` shape used by request/response/policy digests -- not `contentId`'s `sha256:`-prefixed string. Private: not part of this package's public API. */
+function digestObject(value: JsonValue): { sha256: string } {
+  return { sha256: contentId(value).slice('sha256:'.length) }
 }
 
 export interface CreateRecordOptions {
@@ -188,9 +197,7 @@ export function createPolicyRecord(
       throw new EvidenceValidationError(`policy parents must be 'run' or 'mandate' records, got '${parent.kind}'`)
     }
   }
-  const embeddedDigest = input.policy === undefined
-    ? undefined
-    : { sha256: contentId(input.policy).slice('sha256:'.length) }
+  const embeddedDigest = input.policy === undefined ? undefined : digestObject(input.policy)
   if (input.digest !== undefined && embeddedDigest !== undefined
     && input.digest.sha256 !== embeddedDigest.sha256) {
     throw new EvidenceValidationError('policy `digest` does not match the embedded `policy` value')
@@ -260,5 +267,108 @@ export function createDecisionRecord(
   return createRecord('decision', statement, {
     ...options,
     parents: [input.run.id, input.policy.id, ...evidenceRefs],
+  })
+}
+
+export interface CreateEvidenceRecordOptions extends CreateRecordOptions {}
+
+export interface EvidenceRequestInput {
+  mediaType: string
+  /** The actual request value, if available; `digest` is derived from it when omitted. */
+  value?: JsonValue
+  /** Required unless `value` is given. If both are given, they must agree. */
+  digest?: { sha256: string }
+}
+
+/**
+ * `response` has no embedded/reference field until `mode` is known -- this is
+ * a true discriminated union, matching evidenceStatement's own `if/then`
+ * schema split exactly: embedded requires `value` and forbids `reference`;
+ * reference requires `reference` and forbids `value`.
+ */
+export type EvidenceResponseInput =
+  | { mode: 'embedded'; mediaType: string; value: JsonValue; digest?: { sha256: string } }
+  | { mode: 'reference'; mediaType: string; reference: string; digest: { sha256: string } }
+
+export interface CreateEvidenceRecordInput {
+  /** parents always include this run's id. */
+  run: AgentEvidenceRecord
+  /** Optional prior evidence this record builds on; each becomes an additional parent. */
+  priorEvidence?: readonly AgentEvidenceRecord[]
+  evidenceType: string
+  trustMode: 'publisher-signed' | 'local-witness' | 'managed-witness' | 'agent-assertion'
+  source: { id: string; type: string }
+  tool: { name: string; version: string }
+  request: EvidenceRequestInput
+  response: EvidenceResponseInput
+  observedAt: string | Date
+  expiresAt: string | Date | null
+  scope: JsonObject
+}
+
+function resolveDigest(
+  value: JsonValue | undefined,
+  explicit: { sha256: string } | undefined,
+  field: string,
+): { sha256: string } {
+  const derived = value === undefined ? undefined : digestObject(value)
+  if (explicit !== undefined && derived !== undefined && explicit.sha256 !== derived.sha256) {
+    throw new EvidenceValidationError(`${field} \`digest\` does not match the derived digest of \`value\``)
+  }
+  const digest = explicit ?? derived
+  if (digest === undefined) throw new EvidenceValidationError(`${field} requires \`digest\` when no \`value\` is available to derive it from`)
+  return digest
+}
+
+/**
+ * Build a `kind: "evidence"` record. Parents are the supplied `run` plus any
+ * `priorEvidence`, matching graph.ts's rule that evidence parents must
+ * include run_ref and may only be run or evidence records. Request/response
+ * digests are derived from the caller's own `value` where available, and
+ * checked (never silently overridden) when an explicit digest is also given.
+ */
+export function createEvidenceRecord(
+  input: CreateEvidenceRecordInput,
+  options: CreateEvidenceRecordOptions = {},
+): AgentEvidenceRecord {
+  requireKind(input.run, 'run', 'run')
+  const priorEvidence = input.priorEvidence ?? []
+  for (const evidence of priorEvidence) requireKind(evidence, 'evidence', 'priorEvidence')
+
+  const requestDigest = resolveDigest(input.request.value, input.request.digest, 'request')
+  const response = input.response
+  const responseStatement: JsonObject = response.mode === 'embedded'
+    ? {
+      mode: 'embedded',
+      media_type: response.mediaType,
+      value: response.value,
+      digest: resolveDigest(response.value, response.digest, 'response'),
+    }
+    : {
+      mode: 'reference',
+      media_type: response.mediaType,
+      reference: response.reference,
+      // No `value` exists in reference mode to derive a digest from, so this
+      // reduces to "require an explicit digest" -- reusing resolveDigest
+      // keeps that failure message consistent with the embedded branch
+      // instead of falling through to a lower-level canonicalization error.
+      digest: resolveDigest(undefined, response.digest, 'response'),
+    }
+
+  const statement: JsonObject = {
+    evidence_type: input.evidenceType,
+    run_ref: input.run.id,
+    trust_mode: input.trustMode,
+    source: input.source,
+    tool: input.tool,
+    request: { digest: requestDigest, media_type: input.request.mediaType },
+    response: responseStatement,
+    observed_at: timestamp(input.observedAt),
+    expires_at: nullableTimestamp(input.expiresAt),
+    scope: input.scope,
+  }
+  return createRecord('evidence', statement, {
+    ...options,
+    parents: [input.run.id, ...priorEvidence.map((evidence) => evidence.id)],
   })
 }
