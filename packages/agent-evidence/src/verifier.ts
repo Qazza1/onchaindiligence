@@ -19,6 +19,7 @@ import { validateBundlePayload } from './graph.js'
 import { validateDocument } from './schema.js'
 import { evaluateKeyLifecycle, type AttestationKey, TrustPolicy } from './trust.js'
 import { verifyReceiptEnvelope } from './receipts.js'
+import { SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE, verifySignedPaymentClaim } from './paymentClaims.js'
 import type {
   AgentEvidenceRecord,
   BundlePayload,
@@ -291,6 +292,35 @@ function verifyEmbeddedPublicReceipt(
   }
 }
 
+function verifyEmbeddedSignedPaymentClaim(
+  record: AgentEvidenceRecord,
+  proof: JsonObject,
+  policy: TrustPolicy,
+): ComponentResult | null {
+  if (record.kind !== 'evidence' || record.statement.evidence_type !== 'onchaindiligence.signed-claim.payment.v1') return null
+  const response = record.statement.response
+  if (response === null || Array.isArray(response) || typeof response !== 'object' || (response as JsonObject).mode !== 'embedded') {
+    return result('payment-claim-proof', 'UNVERIFIABLE', 'claim-content-unavailable',
+      'recognized payment claim evidence must embed its signed claim for offline verification', { recordId: record.id })
+  }
+  if (
+    proof.statement_media_type !== SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE
+    || (response as JsonObject).media_type !== SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE
+  ) {
+    return result('payment-claim-proof', 'INVALID', 'claim-media-type-mismatch',
+      'payment claim source proof and embedded response must use the Signed Payment Claim v1 media type', { recordId: record.id })
+  }
+  if (Buffer.compare(Buffer.from(canonicalize((response as JsonObject).value)), Buffer.from(canonicalize(proof.envelope))) !== 0) {
+    return result('payment-claim-proof', 'INVALID', 'claim-response-mismatch',
+      'payment claim source proof must exactly equal the embedded evidence response', { recordId: record.id })
+  }
+  const verified = verifySignedPaymentClaim((response as JsonObject).value, policy)
+  return result('payment-claim-proof', verified.state, verified.code, verified.message, {
+    recordId: record.id,
+    ...(verified.key_id === undefined ? {} : { keyId: verified.key_id }),
+  })
+}
+
 function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): ComponentResult[] {
   const components: ComponentResult[] = []
   for (const record of payload.records) {
@@ -326,6 +356,11 @@ function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): Compon
         }
         components.push(verifyAttestationProof(proof, policy, record.id))
       } else if (proofType === 'dsse-ed25519-v1') {
+        const claimVerification = verifyEmbeddedSignedPaymentClaim(record, proof, policy)
+        if (claimVerification) {
+          components.push(claimVerification)
+          continue
+        }
         const envelope = proof.envelope as unknown as DsseEnvelope
         let proofBytes: Buffer
         try {
@@ -361,6 +396,7 @@ function verifyRecordProofs(payload: BundlePayload, policy: TrustPolicy): Compon
 export const RECOGNIZED_EVIDENCE_FAMILIES = [
   'sanctions-screen', 'us-public-company-record', 'technocore-signed-message', 'tclk-transcript',
   'recipient-binding-check', 'recipient-check', 'interop-fixture', 'onchaindiligence.public-action-receipt.v1',
+  'onchaindiligence.signed-claim.payment.v1',
 ] as const
 const recognizedEvidenceFamilies = new Set<string>(RECOGNIZED_EVIDENCE_FAMILIES)
 

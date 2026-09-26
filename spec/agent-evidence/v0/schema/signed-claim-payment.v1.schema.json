@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onchaindiligence.com/schemas/agent-evidence/v0/signed-claim-payment.v1.schema.json",
+  "title": "Signed Payment Claim v1 payload",
+  "type": "object",
+  "required": ["claim_version", "claim_id", "issuer", "issued_at", "provider_reference", "payment", "execution", "extensions"],
+  "properties": {
+    "claim_version": { "const": "onchaindiligence.signed-claim.payment.v1" },
+    "claim_id": { "$ref": "common.schema.json#/$defs/contentId" },
+    "issuer": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "format": "uri", "pattern": "^https://[^/?#]+$", "maxLength": 2048 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "additionalProperties": false
+    },
+    "issued_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "provider_reference": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+    "payment": {
+      "type": "object",
+      "required": ["network"],
+      "properties": {
+        "network": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "asset": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "amount": { "$ref": "common.schema.json#/$defs/decimalString" },
+        "sender": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "recipient": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": ["claimed_status"],
+      "properties": {
+        "claimed_status": { "enum": ["SUBMITTED", "SUCCEEDED", "FAILED", "UNKNOWN"] },
+        "transaction_hash": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      },
+      "additionalProperties": false
+    },
+    "links": {
+      "type": "object",
+      "properties": {
+        "ocd_operation_id": { "type": ["string", "null"], "maxLength": 4096 },
+        "ocd_execution_request_id": { "type": ["string", "null"], "maxLength": 4096 },
+        "ocd_preflight_receipt_id": { "type": ["string", "null"], "maxLength": 4096 },
+        "client_submission_key": { "type": ["string", "null"], "maxLength": 4096 }
+      },
+      "additionalProperties": false
+    },
+    "evidence_digest": { "$ref": "common.schema.json#/$defs/sha256Digest" },
+    "extensions": { "type": "object" }
+  },
+  "additionalProperties": false
+}

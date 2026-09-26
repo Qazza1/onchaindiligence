@@ -205,6 +205,7 @@ class TrustPolicy:
     max_depth: int = 64
     max_string_length: int = 1024 * 1024
     max_array_length: int = 10_000
+    payment_claim_issuer_key_ids: Mapping[str, frozenset[str]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.now.tzinfo is None:
@@ -222,6 +223,13 @@ class TrustPolicy:
             if key_id != key.key_id:
                 raise TrustPolicyError("trust mapping key does not match key record")
         object.__setattr__(self, "keys", MappingProxyType(copied))
+        bindings = {issuer: frozenset(key_ids) for issuer, key_ids in self.payment_claim_issuer_key_ids.items()}
+        for issuer, key_ids in bindings.items():
+            if not key_ids:
+                raise TrustPolicyError(f"payment claim issuer binding has no keys: {issuer}")
+            if key_ids - copied.keys():
+                raise TrustPolicyError(f"payment claim issuer binding references absent keys: {issuer}")
+        object.__setattr__(self, "payment_claim_issuer_key_ids", MappingProxyType(bindings))
         object.__setattr__(self, "now", self.now.astimezone(timezone.utc))
         missing_required = self.required_signature_key_ids - copied.keys()
         if missing_required:
@@ -249,6 +257,11 @@ class TrustPolicy:
                     f"key {key.key_id} references an absent replacement key: {key.replacement_key_id}"
                 )
         return cls(keys=keys, **options)
+
+    def is_payment_claim_key_trusted_for_issuer(self, issuer: str, key_id: str) -> bool:
+        """Return only an explicit caller-controlled issuer/key binding."""
+
+        return key_id in self.payment_claim_issuer_key_ids.get(issuer, frozenset())
 
 
 def evaluate_key_lifecycle(

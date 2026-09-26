@@ -10,7 +10,8 @@
     "bundle-payload.schema.json",
     "portable-file.schema.json",
     "agent-evidence-key-registry.schema.json",
-    "public-action-receipt.schema.json"
+    "public-action-receipt.schema.json",
+    "signed-claim-payment.v1.schema.json"
   ],
   "entry_points": {
     "portable_file": "portable-file.schema.json",
@@ -19,6 +20,7 @@
     "proof": "proof.schema.json",
     "trusted_key_record": "attestation-key.schema.json",
     "agent_evidence_key_registry": "agent-evidence-key-registry.schema.json",
-    "public_action_receipt": "public-action-receipt.schema.json"
+    "public_action_receipt": "public-action-receipt.schema.json",
+    "signed_payment_claim": "signed-claim-payment.v1.schema.json"
   }
 }

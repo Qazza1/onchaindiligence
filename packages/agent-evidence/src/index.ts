@@ -76,6 +76,21 @@ export type {
 } from './tclk.js'
 export { validateDocument } from './schema.js'
 export {
+  createSignedPaymentClaim,
+  signSignedPaymentClaim,
+  verifySignedPaymentClaim,
+  PLATFORM_CLAIM_SIGNATURE_SCOPE,
+  SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE,
+  SIGNED_PAYMENT_CLAIM_VERSION,
+} from './paymentClaims.js'
+export type {
+  CreateSignedPaymentClaimInput,
+  PaymentClaimedStatus,
+  PaymentClaimSigner,
+  PaymentClaimVerificationResult,
+  SignedPaymentClaim,
+} from './paymentClaims.js'
+export {
   AttestationKey,
   createKeyRecord,
   deriveKeyId,

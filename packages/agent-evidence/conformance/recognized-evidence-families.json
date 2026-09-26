@@ -6,5 +6,6 @@
   "recipient-binding-check",
   "recipient-check",
   "interop-fixture",
-  "onchaindiligence.public-action-receipt.v1"
+  "onchaindiligence.public-action-receipt.v1",
+  "onchaindiligence.signed-claim.payment.v1"
 ]

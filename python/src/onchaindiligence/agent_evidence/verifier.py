@@ -37,6 +37,7 @@ from .models import (
     VerificationState,
     overall_state,
 )
+from .payment_claims import SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE, verify_signed_payment_claim
 from .receipts import verify_receipt_envelope
 from .schema import validate_document
 from .trust import AttestationKey, TrustPolicy, evaluate_key_lifecycle
@@ -390,6 +391,56 @@ def _verify_embedded_public_receipt(
     )
 
 
+def _verify_embedded_signed_payment_claim(
+    record: JsonObject,
+    proof: JsonObject,
+    policy: TrustPolicy,
+) -> ComponentResult | None:
+    if (
+        record["kind"] != "evidence"
+        or record["statement"]["evidence_type"] != "onchaindiligence.signed-claim.payment.v1"
+    ):
+        return None
+    record_id = record["id"]
+    response = record["statement"]["response"]
+    if not isinstance(response, dict) or response.get("mode") != "embedded":
+        return _result(
+            "payment-claim-proof",
+            VerificationState.UNVERIFIABLE,
+            "claim-content-unavailable",
+            "recognized payment claim evidence must embed its signed claim for offline verification",
+            record_id=record_id,
+        )
+    if (
+        proof["statement_media_type"] != SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE
+        or response.get("media_type") != SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE
+    ):
+        return _result(
+            "payment-claim-proof",
+            VerificationState.INVALID,
+            "claim-media-type-mismatch",
+            "payment claim source proof and embedded response must use the Signed Payment Claim v1 media type",
+            record_id=record_id,
+        )
+    if response.get("value") != proof["envelope"]:
+        return _result(
+            "payment-claim-proof",
+            VerificationState.INVALID,
+            "claim-response-mismatch",
+            "payment claim source proof must exactly equal the embedded evidence response",
+            record_id=record_id,
+        )
+    verified = verify_signed_payment_claim(response["value"], policy)
+    return _result(
+        "payment-claim-proof",
+        verified.state,
+        verified.code,
+        verified.message,
+        key_id=verified.key_id,
+        record_id=record_id,
+    )
+
+
 def _verify_record_proofs(
     payload: JsonObject,
     policy: TrustPolicy,
@@ -444,6 +495,10 @@ def _verify_record_proofs(
                     continue
                 components.append(_verify_attestation_proof(proof, policy, record_id))
             elif proof_type == "dsse-ed25519-v1":
+                claim_verification = _verify_embedded_signed_payment_claim(record, proof, policy)
+                if claim_verification is not None:
+                    components.append(claim_verification)
+                    continue
                 envelope = proof["envelope"]
                 try:
                     proof_bytes = _decode_base64(envelope["payload"], "source DSSE payload")
@@ -592,6 +647,7 @@ _RECOGNIZED_EVIDENCE_FAMILIES = frozenset(
         "recipient-check",
         "interop-fixture",
         "onchaindiligence.public-action-receipt.v1",
+        "onchaindiligence.signed-claim.payment.v1",
     }
 )
 

@@ -182,6 +182,7 @@ export interface TrustPolicyOptions {
   maxDepth?: number
   maxStringLength?: number
   maxArrayLength?: number
+  paymentClaimIssuerKeyIds?: ReadonlyMap<string, Iterable<string>> | Record<string, Iterable<string>>
 }
 
 export class TrustPolicy {
@@ -198,11 +199,16 @@ export class TrustPolicy {
   readonly #keys: ReadonlyMap<string, AttestationKey>
   readonly #nowMs: number
   readonly #requiredSignatureKeyIds: ReadonlySet<string>
+  readonly #paymentClaimIssuerKeyIds: ReadonlyMap<string, ReadonlySet<string>>
 
   private constructor(keys: Map<string, AttestationKey>, options: TrustPolicyOptions) {
     this.#nowMs = options.now?.getTime() ?? Date.now()
     if (Number.isNaN(this.#nowMs)) throw new TrustPolicyError('policy now must be a valid Date')
     this.#requiredSignatureKeyIds = new Set(options.requiredSignatureKeyIds ?? [])
+    const rawIssuerBindings = options.paymentClaimIssuerKeyIds ?? {}
+    const issuerEntries = rawIssuerBindings instanceof Map ? rawIssuerBindings.entries() : Object.entries(rawIssuerBindings)
+    const issuerBindings = new Map<string, ReadonlySet<string>>()
+    for (const [issuer, keyIds] of issuerEntries) issuerBindings.set(issuer, new Set(keyIds))
     this.minimumValidSignatures = options.minimumValidSignatures ?? 1
     this.maxFutureSkewMs = options.maxFutureSkewMs ?? 5 * 60 * 1000
     this.maxBundleAgeMs = options.maxBundleAgeMs ?? null
@@ -227,7 +233,14 @@ export class TrustPolicy {
     if (missing.length) {
       throw new TrustPolicyError(`required signature keys are absent from caller trust: ${missing.sort().join(', ')}`)
     }
+    for (const [issuer, keyIds] of issuerBindings) {
+      if (!keyIds.size) throw new TrustPolicyError(`payment claim issuer binding has no keys: ${issuer}`)
+      if ([...keyIds].some((keyId) => !keys.has(keyId))) {
+        throw new TrustPolicyError(`payment claim issuer binding references absent keys: ${issuer}`)
+      }
+    }
     this.#keys = new Map(keys)
+    this.#paymentClaimIssuerKeyIds = issuerBindings
   }
 
   static fromKeyRecords(
@@ -258,6 +271,10 @@ export class TrustPolicy {
 
   get requiredSignatureKeyIds(): ReadonlySet<string> {
     return new Set(this.#requiredSignatureKeyIds)
+  }
+
+  isPaymentClaimKeyTrustedForIssuer(issuer: string, keyId: string): boolean {
+    return this.#paymentClaimIssuerKeyIds.get(issuer)?.has(keyId) ?? false
   }
 }
 

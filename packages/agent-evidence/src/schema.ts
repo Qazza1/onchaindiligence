@@ -14,6 +14,7 @@ export const SCHEMA_NAMES = [
   'portable-file.schema.json',
   'agent-evidence-key-registry.schema.json',
   'public-action-receipt.schema.json',
+  'signed-claim-payment.v1.schema.json',
 ] as const
 
 interface AjvRuntime {
