@@ -8,7 +8,6 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
 
 from cryptography.exceptions import InvalidSignature
 
@@ -27,6 +26,7 @@ _LIMITATION = (
     "not settlement, authorization, delivery, safety or compliance."
 )
 _BASE64 = re.compile(r"^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$")
+_HTTPS_ORIGIN = re.compile(r"^https://[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::([1-9][0-9]{0,4}))?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,17 +59,11 @@ def _result(
 
 def _assert_https_origin(value: Any) -> None:
     if not isinstance(value, str):
-        raise ParseError("issuer.id must be an exact HTTPS origin")
-    parsed = urlsplit(value)
-    if (
-        parsed.scheme != "https"
-        or not parsed.netloc
-        or parsed.path
-        or parsed.query
-        or parsed.fragment
-        or value != f"https://{parsed.netloc}"
-    ):
-        raise ParseError("issuer.id must be an exact HTTPS origin")
+        raise ParseError("issuer.id must be a canonical lowercase HTTPS origin")
+    match = _HTTPS_ORIGIN.fullmatch(value)
+    port = int(match.group(1)) if match is not None and match.group(1) else None
+    if match is None or port == 443 or (port is not None and port > 65535):
+        raise ParseError("issuer.id must be a canonical lowercase HTTPS origin")
 
 
 def _decode_base64(value: Any, label: str) -> bytes:
@@ -155,6 +149,13 @@ def verify_signed_payment_claim(
             VerificationState.UNVERIFIABLE,
             "key-not-trusted",
             "signing key is absent from caller-supplied trust",
+            **fields,
+        )
+    if not policy.is_payment_claim_key_trusted_for_issuer(claim["issuer"]["id"], key_id):
+        return _result(
+            VerificationState.UNVERIFIABLE,
+            "issuer-key-binding-missing",
+            "caller trust does not bind this signing key to the claim issuer",
             **fields,
         )
     try:

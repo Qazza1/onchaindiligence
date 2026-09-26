@@ -46,7 +46,11 @@ def fixture() -> tuple[dict[str, object], TrustPolicy]:
             }
         ],
     }
-    policy = TrustPolicy.from_key_records([key], now=parse_timestamp("2026-09-26T12:00:00.000Z"))
+    policy = TrustPolicy.from_key_records(
+        [key],
+        now=parse_timestamp("2026-09-26T12:00:00.000Z"),
+        payment_claim_issuer_key_ids={"https://payments.example": frozenset({key["key_id"]})},
+    )
     return envelope, policy
 
 
@@ -72,3 +76,15 @@ def test_payment_claim_issuer_pinning_and_replay_protection() -> None:
     )
     replay = {**envelope, "payloadType": "application/vnd.onchaindiligence.public-action-receipt.v1+json"}
     assert verify_signed_payment_claim(replay, policy).state is VerificationState.INVALID
+
+
+def test_payment_claim_requires_explicit_issuer_key_binding() -> None:
+    envelope, policy = fixture()
+    unbound = TrustPolicy(
+        keys=policy.keys,
+        now=policy.now,
+        payment_claim_issuer_key_ids={"https://issuer-a.example": frozenset(policy.keys)},
+    )
+    checked = verify_signed_payment_claim(envelope, unbound)
+    assert checked.state is VerificationState.UNVERIFIABLE
+    assert checked.code == "issuer-key-binding-missing"

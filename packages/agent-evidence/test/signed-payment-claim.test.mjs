@@ -25,7 +25,9 @@ function fixture() {
     execution: { claimed_status: 'SUCCEEDED', transaction_hash: '0xtx' },
   })
   const signer = { keyId: key.key_id, sign: (bytes) => ed25519Sign(null, bytes, pair.privateKey) }
-  const policy = TrustPolicy.fromKeyRecords([key], { now: NOW })
+  const policy = TrustPolicy.fromKeyRecords([key], {
+    now: NOW, paymentClaimIssuerKeyIds: { 'https://payments.example': [key.key_id] },
+  })
   return { claim, signer, policy, key, privateKey: pair.privateKey }
 }
 
@@ -65,9 +67,23 @@ test('unknown, revoked, and out-of-window issuer keys never become VALID', async
   const envelope = await signSignedPaymentClaim(claim, signer)
   assert.equal(verifySignedPaymentClaim(envelope, TrustPolicy.fromKeyRecords([], { now: NOW })).state, 'UNVERIFIABLE')
   const revoked = { ...key, status: 'revoked', status_changed_at: '2026-09-26T11:30:00.000Z', status_reason: 'test' }
-  assert.equal(verifySignedPaymentClaim(envelope, TrustPolicy.fromKeyRecords([revoked], { now: NOW })).state, 'INVALID')
+  assert.equal(verifySignedPaymentClaim(envelope, TrustPolicy.fromKeyRecords([revoked], {
+    now: NOW, paymentClaimIssuerKeyIds: { 'https://payments.example': [key.key_id] },
+  })).state, 'INVALID')
   const future = { ...key, valid_from: '2026-09-26T11:30:00.000Z', status_changed_at: '2026-09-26T11:30:00.000Z' }
-  assert.equal(verifySignedPaymentClaim(envelope, TrustPolicy.fromKeyRecords([future], { now: NOW })).state, 'INVALID')
+  assert.equal(verifySignedPaymentClaim(envelope, TrustPolicy.fromKeyRecords([future], {
+    now: NOW, paymentClaimIssuerKeyIds: { 'https://payments.example': [key.key_id] },
+  })).state, 'INVALID')
+})
+
+test('a caller-trusted key is not automatically trusted for an arbitrary issuer', async () => {
+  const { claim, signer, key } = fixture()
+  const envelope = await signSignedPaymentClaim(claim, signer)
+  const wrongIssuerBinding = TrustPolicy.fromKeyRecords([key], {
+    now: NOW, paymentClaimIssuerKeyIds: { 'https://issuer-a.example': [key.key_id] },
+  })
+  assert.equal(verifySignedPaymentClaim(envelope, wrongIssuerBinding).state, 'UNVERIFIABLE')
+  assert.equal(verifySignedPaymentClaim(envelope, wrongIssuerBinding).code, 'issuer-key-binding-missing')
 })
 
 test('issuer is caller-pinned and claim/receipt formats cannot be replayed across contracts', async () => {
@@ -79,4 +95,13 @@ test('issuer is caller-pinned and claim/receipt formats cannot be replayed acros
     issuer: { id: 'https://payments.example/path' }, providerReference: 'x',
     payment: { network: 'eip155:8453' }, execution: { claimed_status: 'UNKNOWN' },
   }))
+})
+
+test('canonical issuer origin accepts lowercase non-default ports and rejects URL variants identically', () => {
+  for (const issuer of ['https://issuer.example:8443']) {
+    assert.doesNotThrow(() => createSignedPaymentClaim({ issuer: { id: issuer }, providerReference: 'x', payment: { network: 'eip155:1' }, execution: { claimed_status: 'UNKNOWN' } }))
+  }
+  for (const issuer of ['https://Issuer.example', 'https://issuer.example:443', 'https://issuer.example/', 'https://issuer.example/a', 'https://issuer.example?q', 'https://issuer.example#f', 'https://u@issuer.example']) {
+    assert.throws(() => createSignedPaymentClaim({ issuer: { id: issuer }, providerReference: 'x', payment: { network: 'eip155:1' }, execution: { claimed_status: 'UNKNOWN' } }), issuer)
+  }
 })

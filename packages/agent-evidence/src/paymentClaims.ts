@@ -15,6 +15,7 @@ export const PLATFORM_CLAIM_SIGNATURE_SCOPE = 'PLATFORM_CLAIM_SIGNATURE' as cons
 
 const LIMITATION = 'Proves only that a key trusted for this issuer signed this exact claim; not settlement, authorization, delivery, safety or compliance.'
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+const HTTPS_ORIGIN = /^https:\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::([1-9][0-9]{0,4}))?$/
 
 export type PaymentClaimedStatus = 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'
 
@@ -73,11 +74,10 @@ function result(
 }
 
 function assertHttpsOrigin(value: string): void {
-  try {
-    const url = new URL(value)
-    if (url.protocol !== 'https:' || url.origin !== value) throw new Error('not an HTTPS origin')
-  } catch {
-    throw new EvidenceValidationError('issuer.id must be an exact HTTPS origin')
+  const match = HTTPS_ORIGIN.exec(value)
+  const port = match?.[1] === undefined ? undefined : Number(match[1])
+  if (!match || port === 443 || (port !== undefined && port > 65535)) {
+    throw new EvidenceValidationError('issuer.id must be a canonical lowercase HTTPS origin')
   }
 }
 
@@ -187,6 +187,10 @@ export function verifySignedPaymentClaim(
   }
   const key = policy.key(signatureEntry.keyid)
   if (!key) return result('UNVERIFIABLE', 'key-not-trusted', 'signing key is absent from caller-supplied trust', fields)
+  if (!policy.isPaymentClaimKeyTrustedForIssuer(claim.issuer.id, signatureEntry.keyid)) {
+    return result('UNVERIFIABLE', 'issuer-key-binding-missing',
+      'caller trust does not bind this signing key to the claim issuer', fields)
+  }
   let signature: Buffer
   try {
     signature = decodeBase64(signatureEntry.sig, 'DSSE signature')
