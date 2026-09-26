@@ -1,0 +1,247 @@
+{
+  "cases": [
+    {
+      "envelope": "valid",
+      "expected": "VALID",
+      "explanation": "Explicit issuer/key binding.",
+      "id": "valid-claim",
+      "keys": "active",
+      "scope": "PLATFORM_CLAIM_SIGNATURE",
+      "trust": {
+        "https://payments.example": [
+          "ed25519-3rLe053Cb84OYIW2"
+        ]
+      }
+    },
+    {
+      "envelope": "tampered",
+      "expected": "INVALID",
+      "explanation": "Payload is invalid.",
+      "id": "tampered-payload",
+      "keys": "active",
+      "scope": "PLATFORM_CLAIM_SIGNATURE",
+      "trust": {
+        "https://payments.example": [
+          "ed25519-3rLe053Cb84OYIW2"
+        ]
+      }
+    },
+    {
+      "envelope": "wrong_type",
+      "expected": "INVALID",
+      "explanation": "DSSE domain separation.",
+      "id": "wrong-payload-type",
+      "keys": "active",
+      "scope": "PLATFORM_CLAIM_SIGNATURE",
+      "trust": {
+        "https://payments.example": [
+          "ed25519-3rLe053Cb84OYIW2"
+        ]
+      }
+    },
+    {
+      "envelope": "claim_id_mismatch",
+      "expected": "INVALID",
+      "explanation": "Claim ID is self-inconsistent.",
+      "id": "claim-id-mismatch",
+      "keys": "active",
+      "scope": "PLATFORM_CLAIM_SIGNATURE",
+      "trust": {
+        "https://payments.example": [
+          "ed25519-3rLe053Cb84OYIW2"
+        ]
+      }
+    },
+    {
+      "envelope": "valid",
+      "expected": "UNVERIFIABLE",
+      "explanation": "Key lacks issuer binding.",
+      "id": "issuer-key-binding-mismatch",
+      "keys": "active",
+      "scope": "PLATFORM_CLAIM_SIGNATURE",
+      "trust": {
+        "https://issuer-a.example": [
+          "ed25519-3rLe053Cb84OYIW2"
+        ]
+      }
+    },
+    {
+      "envelope": "valid",
+      "expected": "UNVERIFIABLE",
+      "explanation": "No caller-trusted key.",
+      "id": "unknown-key",
+      "keys": "none",
+      "scope": "PLATFORM_CLAIM_SIGNATURE",
+      "trust": {}
+    },
+    {
+      "envelope": "valid",
+      "expected": "INVALID",
+      "explanation": "Revoked key.",
+      "id": "revoked-key",
+      "keys": "revoked",
+      "scope": "PLATFORM_CLAIM_SIGNATURE",
+      "trust": {
+        "https://payments.example": [
+          "ed25519-3rLe053Cb84OYIW2"
+        ]
+      }
+    },
+    {
+      "envelope": "valid",
+      "expected": "INVALID",
+      "explanation": "Pre-activation signature.",
+      "id": "outside-key-window",
+      "keys": "future",
+      "scope": "PLATFORM_CLAIM_SIGNATURE",
+      "trust": {
+        "https://payments.example": [
+          "ed25519-3rLe053Cb84OYIW2"
+        ]
+      }
+    },
+    {
+      "envelope": "wrong_type",
+      "expected": "INVALID",
+      "explanation": "Receipt domain cannot be claim.",
+      "id": "receipt-replayed-as-claim",
+      "keys": "active",
+      "scope": "PLATFORM_CLAIM_SIGNATURE",
+      "trust": {
+        "https://payments.example": [
+          "ed25519-3rLe053Cb84OYIW2"
+        ]
+      }
+    },
+    {
+      "envelope": "valid",
+      "expected_receipt": "INVALID",
+      "explanation": "Claim cannot be receipt.",
+      "id": "claim-replayed-as-receipt",
+      "keys": "active",
+      "trust": {
+        "https://payments.example": [
+          "ed25519-3rLe053Cb84OYIW2"
+        ]
+      }
+    }
+  ],
+  "envelopes": {
+    "claim_id_mismatch": {
+      "payload": "eyJjbGFpbV9pZCI6InNoYTI1NjpBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBIiwiY2xhaW1fdmVyc2lvbiI6Im9uY2hhaW5kaWxpZ2VuY2Uuc2lnbmVkLWNsYWltLnBheW1lbnQudjEiLCJleGVjdXRpb24iOnsiY2xhaW1lZF9zdGF0dXMiOiJTVUNDRUVERUQifSwiZXh0ZW5zaW9ucyI6e30sImlzc3VlZF9hdCI6IjIwMjYtMDktMjZUMTE6MDA6MDAuMDAwWiIsImlzc3VlciI6eyJpZCI6Imh0dHBzOi8vcGF5bWVudHMuZXhhbXBsZSJ9LCJwYXltZW50Ijp7Im5ldHdvcmsiOiJlaXAxNTU6ODQ1MyJ9LCJwcm92aWRlcl9yZWZlcmVuY2UiOiJjb25mb3JtYW5jZSJ9",
+      "payloadType": "application/vnd.onchaindiligence.signed-claim.payment.v1+json",
+      "signatures": [
+        {
+          "keyid": "ed25519-3rLe053Cb84OYIW2",
+          "sig": "H5qqyH3ZTCH2m1YxOpgKAru6c9pXWnduk33S86c4ivPgb3OsMs2enDF1RiG6BBcRmVZS4dMvtB7PPYJmQhGgBA=="
+        }
+      ]
+    },
+    "tampered": {
+      "payload": "e30=",
+      "payloadType": "application/vnd.onchaindiligence.signed-claim.payment.v1+json",
+      "signatures": [
+        {
+          "keyid": "ed25519-3rLe053Cb84OYIW2",
+          "sig": "gsbmW5ekAkAHiVfLQZJrbWTGLi3oLFk7tLXms/3Y3hm49wLY4iyEsFpJp5MWSMxWXSdqMglLN5rcBJ1TKtLcBg=="
+        }
+      ]
+    },
+    "valid": {
+      "payload": "eyJjbGFpbV9pZCI6InNoYTI1NjpSOFkzSFBjRGFCUDlXOHNMUEdXNEdWR0RqdlQ0VlJCaUFtMFRLUGVBUHRrIiwiY2xhaW1fdmVyc2lvbiI6Im9uY2hhaW5kaWxpZ2VuY2Uuc2lnbmVkLWNsYWltLnBheW1lbnQudjEiLCJleGVjdXRpb24iOnsiY2xhaW1lZF9zdGF0dXMiOiJTVUNDRUVERUQifSwiZXh0ZW5zaW9ucyI6e30sImlzc3VlZF9hdCI6IjIwMjYtMDktMjZUMTE6MDA6MDAuMDAwWiIsImlzc3VlciI6eyJpZCI6Imh0dHBzOi8vcGF5bWVudHMuZXhhbXBsZSJ9LCJwYXltZW50Ijp7Im5ldHdvcmsiOiJlaXAxNTU6ODQ1MyJ9LCJwcm92aWRlcl9yZWZlcmVuY2UiOiJjb25mb3JtYW5jZSJ9",
+      "payloadType": "application/vnd.onchaindiligence.signed-claim.payment.v1+json",
+      "signatures": [
+        {
+          "keyid": "ed25519-3rLe053Cb84OYIW2",
+          "sig": "gsbmW5ekAkAHiVfLQZJrbWTGLi3oLFk7tLXms/3Y3hm49wLY4iyEsFpJp5MWSMxWXSdqMglLN5rcBJ1TKtLcBg=="
+        }
+      ]
+    },
+    "wrong_type": {
+      "payload": "eyJjbGFpbV9pZCI6InNoYTI1NjpSOFkzSFBjRGFCUDlXOHNMUEdXNEdWR0RqdlQ0VlJCaUFtMFRLUGVBUHRrIiwiY2xhaW1fdmVyc2lvbiI6Im9uY2hhaW5kaWxpZ2VuY2Uuc2lnbmVkLWNsYWltLnBheW1lbnQudjEiLCJleGVjdXRpb24iOnsiY2xhaW1lZF9zdGF0dXMiOiJTVUNDRUVERUQifSwiZXh0ZW5zaW9ucyI6e30sImlzc3VlZF9hdCI6IjIwMjYtMDktMjZUMTE6MDA6MDAuMDAwWiIsImlzc3VlciI6eyJpZCI6Imh0dHBzOi8vcGF5bWVudHMuZXhhbXBsZSJ9LCJwYXltZW50Ijp7Im5ldHdvcmsiOiJlaXAxNTU6ODQ1MyJ9LCJwcm92aWRlcl9yZWZlcmVuY2UiOiJjb25mb3JtYW5jZSJ9",
+      "payloadType": "application/vnd.onchaindiligence.public-action-receipt.v1+json",
+      "signatures": [
+        {
+          "keyid": "ed25519-3rLe053Cb84OYIW2",
+          "sig": "gsbmW5ekAkAHiVfLQZJrbWTGLi3oLFk7tLXms/3Y3hm49wLY4iyEsFpJp5MWSMxWXSdqMglLN5rcBJ1TKtLcBg=="
+        }
+      ]
+    }
+  },
+  "issuer_origins": [
+    [
+      "https://payments.example",
+      true
+    ],
+    [
+      "https://payments.example:8443",
+      true
+    ],
+    [
+      "https://Payments.example",
+      false
+    ],
+    [
+      "https://payments.example:443",
+      false
+    ],
+    [
+      "https://payments.example/",
+      false
+    ],
+    [
+      "https://payments.example/path",
+      false
+    ],
+    [
+      "https://payments.example?x=1",
+      false
+    ],
+    [
+      "https://payments.example#x",
+      false
+    ],
+    [
+      "https://u@payments.example",
+      false
+    ]
+  ],
+  "keys": {
+    "active": {
+      "algorithm": "ed25519",
+      "compromised_at": null,
+      "key_id": "ed25519-3rLe053Cb84OYIW2",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=\n-----END PUBLIC KEY-----\n",
+      "replacement_key_id": null,
+      "status": "active",
+      "status_changed_at": "2026-09-01T00:00:00.000Z",
+      "valid_from": "2026-09-01T00:00:00.000Z",
+      "valid_until": null
+    },
+    "future": {
+      "algorithm": "ed25519",
+      "compromised_at": null,
+      "key_id": "ed25519-3rLe053Cb84OYIW2",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=\n-----END PUBLIC KEY-----\n",
+      "replacement_key_id": null,
+      "status": "active",
+      "status_changed_at": "2026-09-26T11:30:00.000Z",
+      "valid_from": "2026-09-26T11:30:00.000Z",
+      "valid_until": null
+    },
+    "revoked": {
+      "algorithm": "ed25519",
+      "compromised_at": null,
+      "key_id": "ed25519-3rLe053Cb84OYIW2",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=\n-----END PUBLIC KEY-----\n",
+      "replacement_key_id": null,
+      "status": "revoked",
+      "status_changed_at": "2026-09-26T11:30:00.000Z",
+      "status_reason": "conformance",
+      "valid_from": "2026-09-01T00:00:00.000Z",
+      "valid_until": null
+    }
+  },
+  "now": "2026-09-26T12:00:00.000Z",
+  "vector_version": "onchaindiligence.signed-payment-claim.v1.conformance"
+}

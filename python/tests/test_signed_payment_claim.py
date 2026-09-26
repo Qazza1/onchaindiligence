@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import socket
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -15,6 +16,7 @@ from onchaindiligence.agent_evidence import (
     create_key_record,
     dsse_pae,
     parse_timestamp,
+    verify_receipt_envelope,
     verify_signed_payment_claim,
 )
 from onchaindiligence.agent_evidence.payment_claims import SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE
@@ -88,3 +90,25 @@ def test_payment_claim_requires_explicit_issuer_key_binding() -> None:
     checked = verify_signed_payment_claim(envelope, unbound)
     assert checked.state is VerificationState.UNVERIFIABLE
     assert checked.code == "issuer-key-binding-missing"
+
+
+def test_public_signed_payment_claim_corpus_is_authoritative() -> None:
+    corpus = json.loads(
+        (Path(__file__).parents[2] / "spec/agent-evidence/v0/conformance/signed-payment-claim-v1.json").read_text()
+    )
+    for item in corpus["cases"]:
+        records = [] if item["keys"] == "none" else [corpus["keys"][item["keys"]]]
+        policy = TrustPolicy.from_key_records(
+            records,
+            now=parse_timestamp(corpus["now"]),
+            payment_claim_issuer_key_ids={issuer: frozenset(keys) for issuer, keys in item["trust"].items()},
+        )
+        if "expected" in item:
+            checked = verify_signed_payment_claim(corpus["envelopes"][item["envelope"]], policy)
+            assert checked.state.value == item["expected"], item["id"]
+            assert checked.scope == item["scope"], item["id"]
+        if "expected_receipt" in item:
+            assert (
+                verify_receipt_envelope(corpus["envelopes"][item["envelope"]], policy).state.value
+                == item["expected_receipt"]
+            )

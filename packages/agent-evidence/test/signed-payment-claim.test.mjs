@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { generateKeyPairSync, sign as ed25519Sign } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
   createKeyRecord,
@@ -10,6 +11,7 @@ import {
   SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE,
   TrustPolicy,
   verifySignedPaymentClaim,
+  verifyReceiptEnvelope,
 } from '../dist/index.js'
 
 const NOW = new Date('2026-09-26T12:00:00.000Z')
@@ -103,5 +105,25 @@ test('canonical issuer origin accepts lowercase non-default ports and rejects UR
   }
   for (const issuer of ['https://Issuer.example', 'https://issuer.example:443', 'https://issuer.example/', 'https://issuer.example/a', 'https://issuer.example?q', 'https://issuer.example#f', 'https://u@issuer.example']) {
     assert.throws(() => createSignedPaymentClaim({ issuer: { id: issuer }, providerReference: 'x', payment: { network: 'eip155:1' }, execution: { claimed_status: 'UNKNOWN' } }), issuer)
+  }
+})
+
+test('public signed-payment-claim corpus is authoritative', async () => {
+  const corpus = JSON.parse(await readFile(new URL('../conformance/signed-payment-claim-v1.json', import.meta.url)))
+  for (const item of corpus.cases) {
+    const records = item.keys === 'none' ? [] : [corpus.keys[item.keys]]
+    const policy = TrustPolicy.fromKeyRecords(records, { now: new Date(corpus.now), paymentClaimIssuerKeyIds: item.trust })
+    if (item.expected) {
+      const checked = verifySignedPaymentClaim(corpus.envelopes[item.envelope], policy)
+      assert.equal(checked.state, item.expected, item.id)
+      assert.equal(checked.scope, item.scope, item.id)
+    }
+    if (item.expected_receipt) {
+      assert.equal(verifyReceiptEnvelope(corpus.envelopes[item.envelope], policy).state, item.expected_receipt, item.id)
+    }
+  }
+  for (const [issuer, accepted] of corpus.issuer_origins) {
+    const build = () => createSignedPaymentClaim({ issuer: { id: issuer }, providerReference: 'x', payment: { network: 'eip155:1' }, execution: { claimed_status: 'UNKNOWN' } })
+    if (accepted) assert.doesNotThrow(build, issuer); else assert.throws(build, issuer)
   }
 })
