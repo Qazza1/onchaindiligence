@@ -20,6 +20,13 @@ from .errors import (
 )
 from .graph import validate_bundle_payload
 from .models import BundleIntegrityVerification, ComponentResult, VerificationReport, VerificationState
+from .payment_claims import (
+    PLATFORM_CLAIM_SIGNATURE_SCOPE,
+    SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE,
+    SIGNED_PAYMENT_CLAIM_VERSION,
+    PaymentClaimVerificationResult,
+    verify_signed_payment_claim,
+)
 from .receipts import verify_receipt_envelope
 from .records import create_bundle_payload, create_record
 from .trust import (
@@ -35,7 +42,10 @@ __all__ = [
     "BUNDLE_PAYLOAD_TYPE",
     "BUNDLE_VERSION",
     "MEDIA_TYPE",
+    "PLATFORM_CLAIM_SIGNATURE_SCOPE",
     "RECORD_VERSION",
+    "SIGNED_PAYMENT_CLAIM_PAYLOAD_TYPE",
+    "SIGNED_PAYMENT_CLAIM_VERSION",
     "SPECIFICATION_ID",
     "AgentEvidenceError",
     "AttestationKey",
@@ -44,6 +54,7 @@ __all__ = [
     "ComponentResult",
     "EvidenceValidationError",
     "ParseError",
+    "PaymentClaimVerificationResult",
     "SchemaValidationError",
     "SigningError",
     "TrustPolicy",
@@ -66,6 +77,7 @@ __all__ = [
     "validate_bundle_payload",
     "verify_bundle",
     "verify_receipt_envelope",
+    "verify_signed_payment_claim",
 ]
 
 __version__ = "0.1.0"
