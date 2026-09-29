@@ -39,7 +39,7 @@ Every payment detail view should keep these layers separate:
 
 1. **Observed on-chain** — direct chain facts and finality state.
 2. **Derived interpretation** — narrow rule-based classification with the rule stated.
-3. **Execution / provider claim** — Turnkey, x402, Circle, CDP, Crossmint, wallet executor, etc., only when supported evidence exists.
+3. **Execution / provider claim** — Turnkey, x402, Circle, CDP, Crossmint, PayBox, wallet executor, etc., only when supported evidence exists.
 4. **Policy / preflight** — what OCD inspected or decided before execution, when linked.
 5. **OCD signed receipt** — optional signed artifact preserving a particular observation/evidence snapshot.
 
@@ -75,19 +75,37 @@ The dashboard should highlight evidence states such as:
 - receipt exists and verifies VALID;
 - evidence missing or contradictory.
 
+## Live qualification checkpoint — 2026-09-29
+
+The production SDK paid-preflight path was exercised from a real Base payer wallet without calling execution.
+
+- operation: `OCD-OP-IQW7OMmgvfAss63YFn5NfUw9j9k`;
+- paid route: production `/x402/lifecycle/preflight-payment` at the configured `$0.01` USDC preflight price;
+- SDK result: `ready`;
+- policy decision: `ALLOW`;
+- receipt: `OCD-RCP-DD40-SBF9-H6JP-QFJE`;
+- proposed target payment: `1.00 USDC`, **not executed**.
+
+This qualifies the paid preflight path and workspace-linked operation flow. It is not evidence of a third-party provider reference payment, customer adoption, or settlement of the proposed `1.00 USDC` payment.
+
 ## Wallet and agent activity
 
 Add this progressively, opt-in and evidence-bound.
 
 ### Wallet activity
 
-For wallets explicitly connected or watched by the workspace, OCD may correlate supported activity:
+For wallets explicitly pasted, connected or watched by the workspace, OCD may correlate supported activity:
 
 - supported payment transactions and stablecoin transfers;
 - approvals, swaps, bridges and other strict OCD observers where available;
 - operation / payment links;
 - execution-provider claims;
 - receipt and reconciliation state.
+
+Two entry modes are useful and should remain distinct:
+
+- **Paste wallet address** — read-only activity lookup, no signature and no ownership claim.
+- **Connect wallet** — optional message-signature proof that the current workspace controls the address. This proves address control only; it does not establish a person's identity, a company's identity, or which agent created historical transactions.
 
 Do not infer commercial intent from an arbitrary wallet transaction.
 
@@ -106,6 +124,8 @@ Examples:
 - user opened or saved the evidence in the dashboard.
 
 If OCD only sees a wallet transaction, label it **wallet transaction observed**. Do not invent agent attribution.
+
+A PayBox, Turnkey, Circle, CDP, Crossmint or other provider label must come from a linked OCD operation, provider reference, authenticated/signed provider evidence, or another explicit evidence link. Never classify a transaction as provider-originated from chain shape alone.
 
 ### Activity timeline
 
@@ -142,25 +162,7 @@ Do not make gas, arbitrary token decoding, traces, address labels or generic exp
 
 Acceptance: a new user can explain what OCD observed, what it could not establish, and what a receipt proves before downloading anything.
 
-### P-E2 — Automatic Payments feed — NEXT
-
-Goal: make the dashboard useful without manual hash pasting.
-
-Build around existing SDK / MCP operations so payment records appear automatically as operations progress.
-
-Feed should reconcile:
-
-- policy/preflight;
-- agent / operation identity where supported;
-- executor/provider status;
-- transaction reference(s);
-- independent chain observation;
-- receipt state;
-- attention state for missing or contradictory evidence.
-
-Manual inspection and automatically ingested payments must use the same detail UI/data model.
-
-### P-E3 — Turnkey provider reconciliation — NEXT
+### P-E2 — Turnkey reference reconciliation — NEXT
 
 Use the Payments detail screen for the first third-party executor showcase.
 
@@ -174,20 +176,67 @@ Target presentation:
 
 No partnership claim is implied by an independent reference run.
 
-### P-E4 — Wallet + agent observability — LATER / demand-driven
+Acceptance: one bounded real reference flow can be opened in the dashboard and shows provider evidence separately from independent chain evidence and receipt proof.
 
-For explicitly connected / watched wallets and OCD-linked agents:
+### P-E3 — Wallet Evidence v1 — NEXT AFTER TURNKEY
 
-- wallet activity feed;
-- agent / MCP / SDK activity timeline;
-- payment-operation correlation;
-- provider / chain reconciliation;
-- user-visible findings for missing settlement, mismatches and unresolved evidence;
-- optional notifications / webhooks for attention states.
+Goal: let a user paste a wallet and immediately see supported payment activity, then enrich only the transactions OCD can actually link to operations, providers, agents or receipts.
 
-Do not ingest or attribute arbitrary external agent activity without an evidence link.
+Keep v1 intentionally narrow:
 
-### P-E5 — Expand from demonstrated use — LATER
+- Base mainnet only;
+- canonical USDC activity only;
+- paste wallet address first — no wallet signature required;
+- show recent supported incoming/outgoing USDC transfers with transaction hash, counterparty, amount, time and finality where established;
+- correlate by exact transaction reference to existing OCD receipts, workspace operations and provider evidence;
+- show PayBox / Turnkey / other provider attribution only when explicit OCD/provider evidence supports it;
+- show agent / MCP / SDK attribution only when explicit provenance or operation context supports it;
+- allow saving/watching the wallet in the workspace without implying ownership;
+- reuse the Payments evidence-detail model rather than building a separate explorer.
+
+Useful evidence labels include:
+
+- **Wallet transaction observed** — chain fact only;
+- **OCD-linked payment** — exact transaction linked to an OCD operation or receipt;
+- **Provider evidence available** — provider identity/status supported by evidence;
+- **Agent attribution available** — agent/SDK/MCP identity supported by evidence;
+- **Unlinked** — no supported provenance beyond the chain transaction.
+
+Do not build portfolio balances, token discovery, price charts, address-label guessing, generic traces, or provider inference from transaction shape.
+
+Acceptance: pasting a known Base wallet shows canonical USDC activity; a transaction already linked to OCD/PayBox/provider evidence displays those links; an unrelated transfer remains explicitly unlinked rather than being guessed.
+
+### P-E4 — Automatic Payments feed — NEXT / AFTER THE FIRST WALLET EVIDENCE SLICE
+
+Goal: make the dashboard useful without manual hash or wallet pasting.
+
+Build around existing SDK / MCP operations so payment records appear automatically as operations progress.
+
+Feed should reconcile:
+
+- policy/preflight;
+- agent / operation identity where supported;
+- executor/provider status;
+- transaction reference(s);
+- independent chain observation;
+- receipt state;
+- attention state for missing or contradictory evidence.
+
+Manual inspection, wallet-linked activity and automatically ingested payments must use the same detail UI/data model.
+
+### P-E5 — Connected wallet proof-of-control — LATER
+
+After read-only Wallet Evidence v1 proves useful, add optional wallet connection and message-signature proof of control.
+
+Requirements:
+
+- no custody and no spending authority;
+- never request or store a private key;
+- signed challenge must be scoped to the workspace, wallet, nonce and expiry;
+- proof of wallet control must stay separate from real-world identity and from historical agent attribution;
+- disconnecting/removing the wallet removes the workspace association, not public chain history or public receipts.
+
+### P-E6 — Expand from demonstrated use — LATER
 
 Only after real usage:
 
@@ -196,6 +245,7 @@ Only after real usage:
 - additional strict action observers;
 - reliable fee/native-value metadata and allowlisted decoding;
 - richer wallet monitoring;
+- optional notifications / webhooks for attention states;
 - signed evidence packs combining receipt + provider claim + policy context.
 
 ## Explicit non-goals for the next milestone
