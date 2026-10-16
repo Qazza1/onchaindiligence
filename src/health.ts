@@ -150,44 +150,13 @@ async function getHealth(
 }
 
 /**
- * Is the sanctions oracle's RPC reachable right now? (cached, circuit-broken)
- *
- * The oracle is read via JSON-RPC (POST), not a REST GET, so we can't use the
- * generic GET probe(). We do the cheapest possible liveness call — eth_chainId
- * — straight against the RPC, and fold the result into the same breaker state
- * machine via decideProbe/applyProbeResult so behaviour matches the other
- * upstream (fail-fast when down, half-open recovery).
+ * INCIDENT CONTAINMENT: wallet sanctions screening has no usable source (the
+ * Chainalysis oracle is deprecated; a reachable RPC proves nothing about
+ * coverage), so this is permanently false and issues no RPC call. It is only
+ * ever read to refuse or degrade, never to enable screening.
  */
 export async function chainalysisHealthy(): Promise<boolean> {
-  const key = 'sanctions-oracle'
-  const now = Date.now()
-  let b = breakers.get(key)
-  if (!b) {
-    b = newBreaker()
-    breakers.set(key, b)
-  }
-
-  const decision = decideProbe(b, now)
-  if (!decision.probe) return decision.result
-
-  let healthy = false
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  try {
-    const res = await fetch(config.sanctionsOracle.rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }),
-      signal: controller.signal,
-    })
-    healthy = res.ok
-  } catch {
-    healthy = false
-  } finally {
-    clearTimeout(timer)
-  }
-
-  return applyProbeResult(b, healthy, now)
+  return false
 }
 
 /** Is the Companies House API reachable right now? (cached) */

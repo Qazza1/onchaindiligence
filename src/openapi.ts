@@ -66,8 +66,11 @@ export function buildOpenApiSpec() {
       '/screen/{address}': {
         get: {
           tags: ['Checks'],
-          summary: 'Sanctions screen a wallet address',
+          summary: 'Sanctions screen a wallet address (CURRENTLY UNAVAILABLE)',
           description:
+            'INCIDENT: currently unavailable. The Chainalysis oracle is deprecated and unmaintained ' +
+            '(last update 2026-03-18); this route returns 503 sanctions_screening_unavailable before any ' +
+            'payment is requested and never returns a "not sanctioned" result. Historical description: ' +
             'Screens a single wallet address against the Chainalysis on-chain ' +
             'sanctions oracle (US/EU/UN lists) via a read-only isSanctioned() ' +
             'call on Ethereum mainnet. Returns a signed boolean flag.',
@@ -102,8 +105,10 @@ export function buildOpenApiSpec() {
       '/verdict/{address}': {
         get: {
           tags: ['Checks'],
-          summary: 'Signed PASS / WARN / BLOCK counterparty verdict',
+          summary: 'Signed PASS / WARN / BLOCK counterparty verdict (CURRENTLY UNAVAILABLE)',
           description:
+            'INCIDENT: currently unavailable. The verdict depends on the deprecated Chainalysis oracle, so ' +
+            'this route returns 503 sanctions_screening_unavailable before any payment is requested. ' +
             'One call, one signed decision. BLOCK means the address itself is ' +
             'sanctioned. WARN means it is NOT sanctioned but transacted directly ' +
             'with an address that is - a counterparty risk signal, never a ' +
@@ -269,6 +274,8 @@ export function buildOpenApiSpec() {
           tags: ['Checks'],
           summary: 'Combined diligence (wallet + company)',
           description:
+            'INCIDENT: requests that include wallet are currently refused with 503 ' +
+            'sanctions_screening_unavailable before any payment; company-only requests are unaffected. ' +
             'Runs the sanctions screen and the company check in parallel. ' +
             'At least one of wallet or company must be supplied. The two ' +
             'checks are independent — the response always includes a ' +
@@ -790,7 +797,7 @@ export function buildOpenApiSpec() {
             upstreams: {
               type: 'object',
               properties: {
-                sanctions_oracle: { type: 'string', enum: ['reachable', 'unreachable'] },
+                sanctions_oracle: { type: 'string', enum: ['reachable', 'unreachable', 'retired'] },
                 companies_house: { type: 'string', enum: ['reachable', 'unreachable'] },
                 sec_edgar: { type: 'string', enum: ['reachable', 'unreachable'] },
               },

@@ -25,6 +25,9 @@ import {
   buildAttribution as chainalysisAttribution,
   ChainalysisRateLimitError,
   ChainalysisUpstreamError,
+  SanctionsUnavailableError,
+  SANCTIONS_UNAVAILABLE_CODE,
+  SANCTIONS_UNAVAILABLE_MESSAGE,
 } from './chainalysis.js'
 import {
   checkCompany,
@@ -233,6 +236,13 @@ function healthGate(check: () => Promise<boolean>, providerName: string): Middle
   }
 }
 
+// INCIDENT CONTAINMENT: wallet sanctions screening has no maintained data source
+// (the Chainalysis oracle is deprecated). Terminal gate, placed BEFORE
+// mppx.charge() on every route that needs it: nothing is charged, screened or
+// signed, and the response is explicit rather than a retryable outage.
+const sanctionsUnavailableGate: MiddlewareHandler = async (c) =>
+  c.json({ error: SANCTIONS_UNAVAILABLE_CODE, message: SANCTIONS_UNAVAILABLE_MESSAGE }, 503)
+
 // The paid result contract is: pay only if a successful signed result can
 // actually be produced. Every paid route must confirm signing is enabled and
 // active BEFORE mppx.charge() takes payment -- otherwise attest() throwing
@@ -371,7 +381,7 @@ app.get(
   '/screen/:address',
   rateLimit,
   validateAddressOrEns,
-  healthGate(chainalysisHealthy, 'Chainalysis'),
+  sanctionsUnavailableGate,
   requireSigningReadiness,
   mppx.charge({ amount: config.pricing.sanctionsCheck }),
   async (c) => {
@@ -417,7 +427,7 @@ app.get(
   '/verdict/:address',
   rateLimit,
   validateAddressOrEns,
-  healthGate(chainalysisHealthy, 'Chainalysis'),
+  sanctionsUnavailableGate,
   requireSigningReadiness,
   mppx.charge({ amount: config.pricing.sanctionsCheck }),
   async (c) => {
@@ -642,8 +652,11 @@ const diligenceHealthGate: MiddlewareHandler = async (c, next) => {
   const wantsWallet = !!c.req.query('wallet')
   const wantsCompany = !!c.req.query('company')
 
+  // A wallet check cannot be produced, so refuse the whole request before payment
+  // rather than charge for (and sign) a bundle with a missing sanctions result.
+  if (wantsWallet) return sanctionsUnavailableGate(c, next)
+
   const checks: Array<Promise<{ name: string; ok: boolean }>> = []
-  if (wantsWallet) checks.push(chainalysisHealthy().then((ok) => ({ name: 'Chainalysis', ok })))
   if (wantsCompany) checks.push(companiesHouseHealthy().then((ok) => ({ name: 'Companies House', ok })))
 
   if (checks.length > 0) {
@@ -759,7 +772,7 @@ app.get(
   '/web/screen/:address',
   rateLimit,
   validateAddressOrEns,
-  healthGate(chainalysisHealthy, 'Chainalysis'),
+  sanctionsUnavailableGate,
   requireSigningReadiness,
   mppx.charge({ amount: config.pricing.webSanctionsCheck }),
   async (c) => {
@@ -911,7 +924,7 @@ app.get(
       return c.json({ ready: false, error: 'attestation signer is not active' }, 503)
     }
     if (!(await chainalysisHealthy())) {
-      return c.json({ ready: false, error: 'sanctions provider unavailable' }, 503)
+      return c.json({ ready: false, error: SANCTIONS_UNAVAILABLE_CODE }, 503)
     }
     return c.json({ ready: true })
   }
@@ -925,7 +938,7 @@ app.get(
   rateLimit,
   requireInternalAttestationAuth,
   validateAddressOrEns,
-  healthGate(chainalysisHealthy, 'Chainalysis'),
+  sanctionsUnavailableGate,
   async (c) => {
     if (!attestationEnabled() || !attestationSigningReady()) {
       return c.json({ error: 'attestation signer is not active' }, 503)
@@ -1004,6 +1017,7 @@ async function settleSafely<T>(
 }
 
 function describeError(err: unknown): string {
+  if (err instanceof SanctionsUnavailableError) return SANCTIONS_UNAVAILABLE_MESSAGE
   if (err instanceof ChainalysisRateLimitError) return 'sanctions provider rate-limited, please retry shortly'
   if (err instanceof ChainalysisUpstreamError) return `sanctions provider error (status ${err.status})`
   if (err instanceof CompanyNotFoundError) return err.message
@@ -1012,6 +1026,9 @@ function describeError(err: unknown): string {
 }
 
 function handleUpstreamError(c: any, err: unknown) {
+  if (err instanceof SanctionsUnavailableError) {
+    return c.json({ error: SANCTIONS_UNAVAILABLE_CODE, message: SANCTIONS_UNAVAILABLE_MESSAGE }, 503)
+  }
   if (err instanceof CompanyNotFoundError) {
     return c.json({ error: err.message }, 404)
   }
@@ -1219,7 +1236,7 @@ app.get('/health', async (c) => {
       status,
       checked_at: new Date().toISOString(),
       upstreams: {
-        sanctions_oracle: oracleOk ? 'reachable' : 'unreachable',
+        sanctions_oracle: oracleOk ? 'reachable' : 'retired',
         companies_house: companiesHouseOk ? 'reachable' : 'unreachable',
         sec_edgar: edgarOk ? 'reachable' : 'unreachable',
       },
@@ -1233,15 +1250,15 @@ app.get('/', (c) =>
   c.json({
     service: config.service.title,
     routes: {
-      'GET /screen/:address': `Sanctions check only — $${config.pricing.sanctionsCheck}`,
-      'GET /verdict/:address': `Unified signed PASS/WARN/BLOCK counterparty verdict — $${config.pricing.sanctionsCheck}`,
+      'GET /screen/:address': `UNAVAILABLE (deprecated sanctions source; 503 before payment) — $${config.pricing.sanctionsCheck}`,
+      'GET /verdict/:address': `UNAVAILABLE (deprecated sanctions source; 503 before payment) — $${config.pricing.sanctionsCheck}`,
       'GET /screen-name?name=': `OFAC SDN name screening — $${config.pricing.nameScreen}`,
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
       'GET /us-company?q=': `US public company check (SEC EDGAR) — $${config.pricing.usCompanyCheck}`,
       'POST /attest': 'Internal authenticated result-signing service',
       'POST /anchor': `Anchor an attestation on Tempo — $${config.pricing.nameScreen}`,
       'GET /anchored?signature=': 'Check if an attestation is anchored on-chain — free',
-      'GET /diligence?wallet=&company=': `Combined check — $${config.pricing.combinedDiligence}`,
+      'GET /diligence?wallet=&company=': `Combined check; requests with wallet= are UNAVAILABLE (503 before payment) — $${config.pricing.combinedDiligence}`,
     },
     health_url: '/health',
     attestation: {

@@ -1,43 +1,19 @@
 /**
  * chainalysis.ts
  * --------------
- * Sanctions screening via the **Chainalysis on-chain sanctions oracle** —
- * a public smart contract, NOT the HTTP API.
+ * INCIDENT CONTAINMENT. The Chainalysis on-chain sanctions oracle this module
+ * used to read is deprecated and unmaintained (last update 2026-03-18). A
+ * successful `isSanctioned()` read is NOT evidence of current sanctions
+ * coverage: an address OFAC lists today can still return `false`, and a signed
+ * "not sanctioned" built on that boolean is misleading.
+ * https://go.chainalysis.com/chainalysis-oracle-docs.html
  *
- * WHY THE ORACLE (and not the HTTP API):
- * Chainalysis publishes the same US/EU/UN sanctions data two ways: a gated
- * HTTP API that requires a requested API key, and an on-chain oracle smart
- * contract that — in Chainalysis's own words — "is available for anyone to
- * use and does not require a customer relationship with Chainalysis." We use
- * the oracle so the service needs no API key, no signup, and no approval.
- * Same data, same source, zero gatekeeping.
- *
- * HOW IT WORKS:
- * The oracle exposes `isSanctioned(address) -> bool`. We do a read-only
- * (eth_call) against the oracle contract on Ethereum mainnet via a public
- * RPC. A read call costs no gas and broadcasts nothing. The oracle is NOT
- * deployed on Tempo, which is why we read it on Ethereum — this is fully
- * independent of where the *payment* settles (the agent still pays on Tempo
- * in server.ts / mcp.ts; only this lookup reads Ethereum).
- *
- * LICENSING POSTURE (unchanged intent):
- * The oracle is a free public good. The fee charged in server.ts is a flat
- * infrastructure/anti-spam cost, not a markup on sanctions data. Nothing is
- * cached or persisted — every screen is a fresh on-chain read. Every result
- * carries explicit attribution (buildAttribution() below).
- *
- * IMPORTANT — what the oracle does and doesn't return:
- * The oracle answers a single boolean: is this address sanctioned? It does
- * NOT return the rich per-match detail (names, programs, list URLs) that the
- * HTTP API did. We therefore keep the SanctionsResult shape stable for
- * callers, but when an address IS sanctioned we return ONE honest, generic
- * identification entry rather than inventing specifics the oracle never gave
- * us. We never fabricate match details.
+ * So no address is screened here any more. Every valid address yields an
+ * explicit "unavailable" error and NO oracle read is issued; there is no flag
+ * to re-enable it. A maintained data source is a separate piece of work.
+ * Malformed-address validation is preserved (400, not an outage).
  */
-
-import { createPublicClient, http, getAddress, type Address } from 'viem'
-import { mainnet } from 'viem/chains'
-import { config } from './config.js'
+import { getAddress } from 'viem'
 
 export interface SanctionsIdentification {
   category: string
@@ -52,11 +28,7 @@ export interface SanctionsResult {
   identifications: SanctionsIdentification[]
 }
 
-/**
- * Kept for interface compatibility with callers/tests. The oracle path does
- * not rate-limit per key the way the HTTP API did, but server.ts still maps
- * any upstream trouble through these, and tests reference them.
- */
+// Retained so existing callers/tests keep compiling; no oracle reads are issued.
 export class ChainalysisRateLimitError extends Error {
   constructor() {
     super('Sanctions oracle RPC rate limit hit')
@@ -71,102 +43,45 @@ export class ChainalysisUpstreamError extends Error {
   }
 }
 
-// Minimal ABI — only the read method we need.
-const SANCTIONS_ABI = [
-  {
-    inputs: [{ internalType: 'address', name: 'addr', type: 'address' }],
-    name: 'isSanctioned',
-    outputs: [{ internalType: 'bool', name: '', type: 'bool' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
+export const SANCTIONS_UNAVAILABLE_CODE = 'sanctions_screening_unavailable'
 
-// Lazily-built viem client so importing this module never opens a socket
-// (keeps tests and the MCP stdio boot clean).
-let client: ReturnType<typeof createPublicClient> | null = null
-function getClient() {
-  if (!client) {
-    client = createPublicClient({
-      chain: mainnet,
-      transport: http(config.sanctionsOracle.rpcUrl),
-    })
+export const SANCTIONS_UNAVAILABLE_MESSAGE =
+  'Wallet sanctions screening is unavailable: the Chainalysis oracle is deprecated ' +
+  'and unmaintained (last update 2026-03-18). No current sanctions finding was made. ' +
+  'An unchecked address must not be treated as not sanctioned.'
+
+export class SanctionsUnavailableError extends ChainalysisUpstreamError {
+  readonly code = SANCTIONS_UNAVAILABLE_CODE
+  constructor() {
+    super(503)
+    this.name = 'SanctionsUnavailableError'
+    this.message = SANCTIONS_UNAVAILABLE_MESSAGE
   }
-  return client
 }
 
-/**
- * Screens a single address against the Chainalysis sanctions oracle.
- * Always live — a fresh on-chain read every time, never cached.
- *
- * Throws on a malformed address (so callers return a clean 400) and wraps
- * RPC/transport failures in ChainalysisUpstreamError (so server.ts can turn
- * them into a 502/health-gated response rather than a 500).
- */
+/** MCP tool error result, returned BEFORE any payment is requested or taken. */
+export function sanctionsUnavailableToolResult() {
+  return { content: [{ type: 'text' as const, text: SANCTIONS_UNAVAILABLE_MESSAGE }], isError: true as const }
+}
+
+/** Preserves input errors, but never returns a positive OR a negative finding. */
 export async function screenAddress(address: string): Promise<SanctionsResult> {
-  // Validate + checksum. getAddress throws if it isn't a valid EVM address;
-  // we convert that into our typed upstream-style error with a 400 marker so
-  // the route layer treats it as bad input, not an outage.
-  let checksummed: Address
   try {
-    checksummed = getAddress(address)
+    getAddress(address)
   } catch {
-    // 400-class: bad address. Distinct from an upstream failure.
+    // 400-class: bad address. Distinct from an outage.
     const err = new ChainalysisUpstreamError(400)
     err.message = `"${address}" is not a valid EVM address`
     throw err
   }
-
-  let sanctioned: boolean
-  try {
-    sanctioned = (await getClient().readContract({
-      address: config.sanctionsOracle.contractAddress as Address,
-      abi: SANCTIONS_ABI,
-      functionName: 'isSanctioned',
-      args: [checksummed],
-    })) as boolean
-  } catch (err) {
-    // Any RPC/network failure → upstream error (502-class). The health gate
-    // and the no-auto-refund policy cover this path.
-    throw new ChainalysisUpstreamError(502)
-  }
-
-  // The oracle gives only a boolean. Keep the result shape stable, but do not
-  // fabricate match specifics the oracle didn't provide.
-  const identifications: SanctionsIdentification[] = sanctioned
-    ? [
-        {
-          category: 'sanctioned',
-          name: 'Sanctioned address',
-          description:
-            'Address is present on the Chainalysis on-chain sanctions oracle, ' +
-            'which reflects US/EU/UN sanctions designations. The oracle returns ' +
-            'a match flag only; consult official OFAC/EU/UN sources for the ' +
-            'specific designation details.',
-          url: 'https://www.chainalysis.com/free-cryptocurrency-sanctions-screening-tools/',
-        },
-      ]
-    : []
-
-  return {
-    address: checksummed,
-    sanctioned,
-    identifications,
-  }
+  throw new SanctionsUnavailableError()
 }
 
-/**
- * Standard attribution block. Every response that includes oracle data MUST
- * include this — it keeps the product honest about what it is (a free-tool
- * wrapper, not an independent compliance product).
- */
+/** Historical source attribution only; this is not a current coverage claim. */
 export function buildAttribution() {
   return {
-    source: 'Chainalysis on-chain sanctions oracle (free public good, no API key)',
-    method: `read-only isSanctioned() call on Ethereum mainnet oracle ${config.sanctionsOracle.contractAddress}`,
-    note:
-      'This fee covers infrastructure only, not the underlying data. The oracle ' +
-      'reflects US/EU/UN sanctions lists and returns a match flag; it is not ' +
-      'legal advice and is not a complete compliance program.',
+    source: 'Chainalysis on-chain sanctions oracle (deprecated)',
+    method: 'Unavailable; no oracle lookup performed',
+    note: SANCTIONS_UNAVAILABLE_MESSAGE,
   }
 }
