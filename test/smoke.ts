@@ -126,8 +126,8 @@ await test('attribution is present, honest, and oracle-aware', async () => {
   const { buildAttribution } = await import('../src/chainalysis.js')
   const a = buildAttribution()
   assert.ok(a.source && a.note)
-  assert.match(a.source, /oracle/i)
-  assert.match(a.note, /not legal advice|not a complete compliance/i)
+  assert.match(a.source, /oracle.*deprecated/i)
+  assert.match(a.note, /unavailable/i) // incident: no current sanctions finding is claimed
 })
 
 await test('direct exposure is complete when the supported window has no counterparties', async () => {
@@ -161,7 +161,6 @@ await test('direct exposure is partial, never complete, when a counterparty scre
       },
     ],
   })
-  queueMock(200, { jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'upstream failed' } })
   const result = await checkDirectExposure('0x0000000000000000000000000000000000000001')
   assert.strictEqual(result.status, 'partial')
   assert.strictEqual(result.evaluated, false)
@@ -175,16 +174,15 @@ await test('the 25-counterparty cap is reported as partial rather than clean', a
     recipient: `0x${(index + 2).toString(16).padStart(40, '0')}`,
   }))
   queueMock(200, { data: rows })
-  for (let index = 0; index < 25; index++) {
-    queueMock(200, { jsonrpc: '2.0', id: index + 1, result: `0x${'0'.repeat(64)}` })
-  }
 
   const result = await checkDirectExposure(subject)
   assert.strictEqual(result.status, 'partial')
   assert.strictEqual(result.evaluated, false)
   assert.strictEqual(result.counterparties_found, 26)
   assert.strictEqual(result.counterparties_considered, 25)
-  assert.strictEqual(result.counterparties_screened, 25)
+  // Sanctions screening is retired (deprecated oracle): counterparties are NOT screened and are never treated as clean.
+  assert.strictEqual(result.counterparties_screened, 0)
+  assert.strictEqual(result.screening_failures, 25)
   assert.strictEqual(result.counterparties_omitted, 1)
 })
 

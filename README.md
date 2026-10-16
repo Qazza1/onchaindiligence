@@ -25,10 +25,10 @@ This API answers narrow factual questions and is deliberately honest about their
 
 | Endpoint | Checks | Price |
 |----------|--------|-------|
-| `GET /screen/:address` | Is this wallet on a sanctions list? (Chainalysis on-chain oracle, US/EU/UN.) Address in, yes/no + details out. Says nothing about who owns it. | $0.01 |
+| `GET /screen/:address` | **Currently unavailable** (sanctions-source incident, see below): returns 503 before payment. Formerly a wallet sanctions check. | $0.01 |
 | `GET /screen-name?name=` | Is this person or company on the OFAC SDN list? Fuzzy name match against primary names + strong aliases, with confidence scores. Returns candidate matches, not a verdict. | $0.02 |
 | `GET /company/:companyNumber` | UK company status, profile, and PSC data (People with Significant Control — who actually owns/controls it). Says nothing about crypto. | $0.05 |
-| `GET /diligence?wallet=&company=` | Wallet + company checks in parallel. | $0.05 |
+| `GET /diligence?wallet=&company=` | Wallet + company checks in parallel. **Requests that include `wallet` are currently refused with 503 before payment**; company-only requests are unaffected. | $0.05 |
 | `POST /anchor` | Anchor an attestation's hash on Tempo for immutable, timestamped proof. | $0.01 |
 
 **The critical limitation of the combined check:** `/diligence` runs the two checks independently and returns both — it does **not** establish any link between the wallet and the company. The response says so explicitly. Drawing a connection between them is the caller's judgement, not a claim this API makes.
@@ -68,9 +68,13 @@ Payment uses the HTTP `402 Payment Required` flow over MPP on Tempo:
 
 If an upstream data source is unreachable, the server returns `503` **before** requesting payment — you are never charged for a check that can't complete.
 
+## Sanctions-source incident (wallet screening is unavailable)
+
+The Chainalysis on-chain sanctions oracle that wallet screening read is **deprecated and unmaintained (last update 2026-03-18)**, and an address currently listed by OFAC could still read as not sanctioned. Wallet screening is therefore **suspended** rather than served from a stale source: `/screen`, `/web/screen`, `/verdict`, `/diligence?wallet=`, the internal verdict route and the stdio MCP `screen_wallet` / `diligence(wallet)` tools return an explicit `sanctions_screening_unavailable` error **before any payment is requested**, and nothing is signed. Previously signed wallet results are historical claims, not current clearance. No replacement provider is included; see `docs/SANCTIONS_SOURCE_INCIDENT.md`.
+
 ## Data provenance
 
-**Wallet screening** reads the **Chainalysis on-chain sanctions oracle** — a free, public smart contract on Ethereum mainnet (`0x40C57923924B5c5c5455c48D93317139ADDaC8fb`), via a read-only `isSanctioned()` call. No Chainalysis API key or commercial relationship is required; it's a public good reflecting US/EU/UN lists.
+**Wallet screening (suspended, see the incident notice above)** previously read the **Chainalysis on-chain sanctions oracle** — a free, public smart contract on Ethereum mainnet (`0x40C57923924B5c5c5455c48D93317139ADDaC8fb`), via a read-only `isSanctioned()` call. No Chainalysis API key or commercial relationship is required; it's a public good reflecting US/EU/UN lists.
 
 **Name screening** matches against the official **U.S. Treasury OFAC SDN list** (public-domain government data), including strong aliases. It uses transparent fuzzy matching (token overlap + edit distance) and returns confidence-scored candidates — deliberately not weak AKAs, per OFAC's own guidance. A match is a candidate to investigate with secondary identifiers, never a determination.
 

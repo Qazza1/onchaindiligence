@@ -91,10 +91,10 @@ screen. Add each of these as a separate key/value pair.
 | `ATTESTATION_PRIVATE_KEY` | Ed25519 PKCS8 PEM for signing responses (generate it — see below). Required: production does not boot unsigned. |
 | `ATTESTATION_SERVICE_TOKEN` | a separate 32-byte random secret for trusted server-to-server calls to `/attest` |
 
-There is **no Chainalysis API key** — sanctions screening uses the public
-on-chain oracle (no key, no signup). Optionally set `SANCTIONS_ORACLE_RPC_URL`
-to a dedicated Ethereum RPC if the default public one throttles you under
-load; otherwise leave it unset.
+There is **no Chainalysis API key**. Wallet sanctions screening is currently
+**suspended** (the public oracle is deprecated; see
+`docs/SANCTIONS_SOURCE_INCIDENT.md`), so `SANCTIONS_ORACLE_RPC_URL` is no longer
+read by any request path and may be left unset.
 
 Generate the `MPP_SECRET_KEY` on your machine and paste the output:
 

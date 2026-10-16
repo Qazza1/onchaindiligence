@@ -31,7 +31,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Mppx, tempo, Transport } from 'mppx/server'
 import { config, assertConfigured } from './config.js'
-import { screenAddress, buildAttribution as chainalysisAttribution } from './chainalysis.js'
+import { screenAddress, buildAttribution as chainalysisAttribution, sanctionsUnavailableToolResult } from './chainalysis.js'
 import { checkCompany, buildAttribution as companiesHouseAttribution } from './companiesHouse.js'
 import { attest } from './attestation.js'
 import { logPaymentSuccess, logPaymentFailed } from './paymentLog.js'
@@ -74,20 +74,14 @@ server.registerTool(
   {
     title: 'Screen a crypto wallet for sanctions',
     description:
-      'Checks whether a crypto wallet address appears on a sanctions list ' +
-      '(via Chainalysis free sanctions data). Returns a signed attestation. ' +
-      'Charges a small stablecoin fee per call via MPP on Tempo.',
+      'CURRENTLY UNAVAILABLE: the sanctions data source (the Chainalysis oracle) is deprecated and ' +
+      'unmaintained. This tool returns an error before any payment is requested and never reports a ' +
+      'wallet as not sanctioned.',
     inputSchema: { address: z.string().min(10).describe('The crypto wallet address to screen') },
   },
-  async (args, extra) => {
-    const charge = (await payment.tempo.charge({ amount: config.pricing.sanctionsCheck })(extra)) as any
-    if (charge.status === 402) throw charge.challenge
-    const result = await screenAddress(args.address)
-    return toolResult(charge, {
-      ...result,
-      ...chainalysisAttribution(),
-      checked_at: new Date().toISOString(),
-    }) as any
+  async () => {
+    // Incident containment: refuse BEFORE the payment challenge; nothing is screened or signed.
+    return sanctionsUnavailableToolResult() as any
   }
 )
 
@@ -121,8 +115,8 @@ server.registerTool(
   {
     title: 'Combined sanctions + UK company diligence',
     description:
-      'Runs a sanctions check on a wallet and/or a UK company verification, ' +
-      'whichever is provided. NOTE: these are independent checks — a clean ' +
+      'Runs a UK company verification (wallet sanctions screening is CURRENTLY UNAVAILABLE: ' +
+      'requests that include a wallet are refused before any payment). NOTE: these are independent checks — a clean ' +
       'result does NOT establish that the wallet belongs to the company. ' +
       'Returns a signed attestation. Charges a small stablecoin fee per call.',
     inputSchema: {
@@ -140,6 +134,9 @@ server.registerTool(
         isError: true,
       } as any
     }
+
+    // Incident containment: a wallet check cannot be produced, so refuse before charging.
+    if (args.wallet) return sanctionsUnavailableToolResult() as any
 
     const charge = (await payment.tempo.charge({ amount: config.pricing.combinedDiligence })(extra)) as any
     if (charge.status === 402) throw charge.challenge
