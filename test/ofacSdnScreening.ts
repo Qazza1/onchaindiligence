@@ -12,6 +12,7 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { neonConfig } from '@neondatabase/serverless'
 
 process.env.COMPANIES_HOUSE_API_KEY = 'fake-key-for-tests'
 process.env.MPP_RECIPIENT_ADDRESS = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb9226d'
@@ -47,8 +48,8 @@ const { default: app } = await import('../src/server.js')
 
 // 0. Shared-module divergence tripwire: the same pins live in the MCP repo's test.
 const PINS: Record<string, string> = {
-  'src/ofacSdnDigitalCurrency.ts': '3a2d99b7075be154468e0eb663401e0a4a29aaf1ea22f726470c791a62373847',
-  'src/walletSanctions.ts': '32a2384ab97760e7cb8c15415cbd5f11793336b65fbfc18d795eeb3922fe0848',
+  'src/ofacSdnDigitalCurrency.ts': '0090ed23fa2727dfdcb799b105796c27513001076ca4e47ca9f621548ee796be',
+  'src/walletSanctions.ts': 'fdd713a60865d8ae5e15c87f137e147907010a4fa7ec3321b1663e9946d71a30',
 }
 for (const [file, pin] of Object.entries(PINS)) {
   const text = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
@@ -77,6 +78,14 @@ assert.equal(xbt.address_format, 'other')
 assert.equal(xbt.normalized_value, XBT_LISTED, 'non-EVM identifiers keep their case')
 assert.match(shared.identifierIndexSha256(parsed.identifiers), /^[0-9a-f]{64}$/)
 
+// XML character references must not alter eligibility, completeness or matching.
+for (const firstLetter of ['&#68;', '&#x44;']) {
+  const encoded = shared.parseSdnXml(fixture.replaceAll('<idType>Digital Currency Address - ', '<idType>' + firstLetter + 'igital Currency Address - '))
+  assert.deepEqual(encoded.identifiers, parsed.identifiers)
+  assert.equal(shared.identifierIndexSha256(encoded.identifiers), shared.identifierIndexSha256(parsed.identifiers))
+  assert.equal(shared.screenEvmAddress({ record: {} as any, evm: shared.indexEvmIdentifiers(encoded.identifiers), assessed_at: '' }, REPORTED).match_status, 'listed')
+}
+
 // 2. Malformed or altered documents never become an index.
 const rejects = (xml: string, reason: string) =>
   assert.throws(() => shared.parseSdnXml(xml), (e: any) => e instanceof shared.SdnParseError && e.reason === reason, reason)
@@ -91,6 +100,9 @@ rejects(fixture.replace('<remarks>(Linked To: NET PEYGARD SAMAVAT COMPANY)</rema
   '<remarks>Digital Currency Address - ETH 0x1111111111111111111111111111111111111111</remarks>'), 'identifier_outside_id_list')
 rejects(fixture.replace('<idNumber>0x252a8bd2319d8a555b872990601221b3a2053bce</idNumber>', '<idNumber>0x252a 8bd2</idNumber>'), 'bad_identifier_value')
 rejects('', 'empty')
+rejects(fixture.replace('</sdnList>', '<idType>&#68;igital Currency Address - ETH</idType></sdnList>'), 'identifier_count_mismatch')
+rejects(fixture.replace('<idType>Digital Currency Address - ETH</idType>', '<idType>&#x44;igital Currency Address - ETH<bad/></idType>'), 'malformed_identifier_type')
+rejects(fixture.replace('<idType>Digital Currency Address - ETH</idType>', '<idType>&broken;igital Currency Address - ETH</idType>'), 'malformed_entity')
 
 // 3. Candidate validation: floors, abnormal shrinkage (quarantine), rollback, future dates.
 const now = new Date('2026-10-16T12:00:00.000Z')
@@ -212,7 +224,38 @@ const stored = (p: typeof parsed, sha: string, revalidatedAt: Date) => ({
 })
 const unavailable = async (reason: string) =>
   assert.rejects(ws.screenAddress(REPORTED), (e: any) => e instanceof ws.SanctionsUnavailableError && e.reason === reason, reason)
-await unavailable('not_configured') // no override, no SANCTIONS_DATABASE_URL
+// The canonical API must never connect through an unrelated DATABASE_URL.
+const originalNeonFetch = neonConfig.fetchFunction
+let databaseReads = 0
+const readerUrl = 'postgresql://synthetic:synthetic@reader.invalid/sanctions'
+neonConfig.fetchFunction = async (_url: string | URL | Request, init?: RequestInit) => {
+  databaseReads++
+  const connection = new URL(new Headers(init?.headers).get('Neon-Connection-String')!)
+  assert.equal(connection.hostname, new URL(readerUrl).hostname)
+  assert.equal(connection.pathname, new URL(readerUrl).pathname)
+  const snapshot = stored(parsed, fixtureSha, new Date())
+  const row = { ...snapshot.record, evm_identifier_rows: snapshot.evm_identifiers }
+  const keys = Object.keys(row) as Array<keyof typeof row>
+  return Response.json({ fields: keys.map((name) => ({ name, dataTypeID: name === 'evm_identifier_rows' ? 114 : 25 })),
+    rows: [keys.map((key) => row[key] === null ? null : typeof row[key] === 'object' ? JSON.stringify(row[key]) : String(row[key]))] })
+}
+try {
+  process.env.DATABASE_URL = 'postgresql://synthetic:synthetic@unrelated.invalid/other'
+  await unavailable('not_configured')
+  assert.equal((await ws.sanctionsDataStatus()).status, 'not_configured')
+  const denied = await app.request('/screen/' + REPORTED)
+  assert.equal(denied.status, 503)
+  assert.equal(((await denied.json()) as any).reason, 'not_configured')
+  assert.equal(denied.headers.get('WWW-Authenticate'), null)
+  assert.equal(databaseReads, 0, 'missing reader configuration must not attempt any connection')
+  process.env.SANCTIONS_DATABASE_URL = readerUrl
+  assert.equal((await ws.screenAddress(REPORTED)).match_status, 'listed')
+  assert.equal(databaseReads, 1, 'only the explicit dedicated reader is used')
+} finally {
+  delete process.env.DATABASE_URL
+  delete process.env.SANCTIONS_DATABASE_URL
+  neonConfig.fetchFunction = originalNeonFetch
+}
 ws.setSanctionsSnapshotSource(async () => null)
 await unavailable('no_snapshot')
 ws.setSanctionsSnapshotSource(async () => { throw new Error('connect ECONNREFUSED db.internal:5432 role=writer') })
@@ -222,6 +265,15 @@ ws.setSanctionsSnapshotSource(async () => stored(parsed, fixtureSha, new Date(Da
 await unavailable('stale')
 ws.setSanctionsSnapshotSource(async () => ({ ...stored(parsed, fixtureSha, new Date()), evm_identifiers: [] }))
 await unavailable('invalid_record')
+assert.equal((await ws.sanctionsDataStatus()).status, 'unavailable')
+assert.equal((await ws.sanctionsDataStatus()).reason, 'invalid_record')
+for (const row of [null, { ...stored(parsed, fixtureSha, new Date()).evm_identifiers[0], normalized_value: 'bad' }]) {
+  const malformed = stored(parsed, fixtureSha, new Date())
+  malformed.evm_identifiers[0] = row as any
+  ws.setSanctionsSnapshotSource(async () => malformed)
+  await unavailable('invalid_record')
+  assert.equal((await ws.sanctionsDataStatus()).status, 'unavailable')
+}
 let loads = 0
 const freshSource = async () => { loads++; return stored(parsed, fixtureSha, new Date(Date.now() - hour)) }
 ws.setSanctionsSnapshotSource(freshSource)

@@ -95,10 +95,12 @@ export function setSanctionsSnapshotSource(source: SnapshotSource | null): void 
   sourceOverride = source
 }
 
-function databaseUrl(): string | null {
-  // The canonical API is given a read-only role via SANCTIONS_DATABASE_URL; the
-  // MCP service (which owns the store) falls back to its DATABASE_URL.
-  return process.env.SANCTIONS_DATABASE_URL || process.env.DATABASE_URL || null
+// Safe default for the canonical API: only its dedicated SELECT-only reader.
+let databaseUrl = (): string | null => process.env.SANCTIONS_DATABASE_URL || null
+
+/** Trusted service bootstrap only. MCP explicitly selects its own snapshot store. */
+export function configureSanctionsDatabaseUrl(resolve: () => string | null): void {
+  databaseUrl = resolve
 }
 
 const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`
@@ -155,17 +157,37 @@ function maxStalenessMs(): number {
   return maxStalenessMsFromEnv(process.env.SANCTIONS_MAX_STALENESS_HOURS)
 }
 
+/** Shared by screening and health; no index construction or second database read. */
+function requireUsableStoredIndex(stored: StoredSnapshot): DigitalCurrencyIdentifier[] {
+  const evm = stored.evm_identifiers
+  const ids = new Set<number>()
+  const addresses = new Set<string>()
+  const invalid = () => new SanctionsUnavailableError('invalid_record', 'stored identifiers do not match the snapshot record')
+  if (!Array.isArray(evm) || !Number.isSafeInteger(stored.record.evm_identifiers) ||
+      stored.record.evm_identifiers < 1 || evm.length !== stored.record.evm_identifiers) throw invalid()
+  for (const i of evm) {
+    if (!i || i.address_format !== 'evm' || typeof i.normalized_value !== 'string' ||
+        !/^0x[0-9a-f]{40}$/.test(i.normalized_value) || typeof i.listed_value !== 'string' ||
+        i.listed_value.toLowerCase() !== i.normalized_value ||
+        !Number.isSafeInteger(i.id_uid) || i.id_uid < 1 || ids.has(i.id_uid) ||
+        !Number.isSafeInteger(i.sdn_uid) || i.sdn_uid < 1 || typeof i.sdn_name !== 'string' ||
+        !(i.sdn_type === null || typeof i.sdn_type === 'string') ||
+        typeof i.currency !== 'string' || !/^[A-Z0-9]{2,12}$/.test(i.currency) ||
+        !Array.isArray(i.programs) || i.programs.some((p) => typeof p !== 'string')) throw invalid()
+    ids.add(i.id_uid)
+    addresses.add(i.normalized_value)
+  }
+  if (addresses.size !== stored.record.evm_unique_addresses) throw invalid()
+  return evm
+}
+
 /** Load the active snapshot and require it to be fresh. Throws SanctionsUnavailableError otherwise. */
 export async function loadUsableSnapshot(now: Date = new Date()): Promise<LoadedSnapshot> {
   const stored = await readActive()
   if (!stored) throw new SanctionsUnavailableError('no_snapshot', 'no validated OFAC SDN snapshot has been activated')
   const verdict = assessSnapshot(stored.record, now, maxStalenessMs())
   if (!verdict.usable) throw new SanctionsUnavailableError(verdict.reason, verdict.detail)
-  const evm = stored.evm_identifiers
-  if (!Array.isArray(evm) || evm.length !== stored.record.evm_identifiers ||
-      evm.some((i) => i.address_format !== 'evm' || classifyAddress(i.normalized_value) !== 'evm')) {
-    throw new SanctionsUnavailableError('invalid_record', 'stored identifiers do not match the snapshot record')
-  }
+  const evm = requireUsableStoredIndex(stored)
   return { record: stored.record, evm: indexEvmIdentifiers(evm), assessed_at: now.toISOString() }
 }
 
@@ -199,7 +221,12 @@ export async function sanctionsDataStatus(now: Date = new Date()): Promise<Sanct
     snapshot_id: record.snapshot_id,
   }
   const verdict = assessSnapshot(record, now, maxStalenessMs())
-  if (verdict.usable) return { ...base, status: 'current', ...meta }
+  if (verdict.usable) {
+    try { requireUsableStoredIndex(stored) } catch {
+      return { ...base, status: 'unavailable', reason: 'invalid_record', ...meta }
+    }
+    return { ...base, status: 'current', ...meta }
+  }
   return { ...base, status: verdict.reason === 'stale' ? 'stale' : 'unavailable', reason: verdict.reason, ...meta }
 }
 

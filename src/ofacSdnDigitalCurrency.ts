@@ -37,7 +37,7 @@ export const OFAC_SDN_XML_NAMESPACE =
   'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/XML'
 export const OFAC_SDN_DATASET = 'ofac_sdn_xml'
 export const OFAC_SDN_DATASET_NAME = 'U.S. Treasury OFAC Specially Designated Nationals (SDN) List, SDN.XML'
-export const OFAC_SDN_PARSER_VERSION = 'ocd-ofac-sdn-dca/1'
+export const OFAC_SDN_PARSER_VERSION = 'ocd-ofac-sdn-dca/2'
 export const OFAC_SDN_MATCHING_VERSION = 'exact-evm-address/1'
 export const SANCTIONS_SCREENING_SCOPE = 'ofac_sdn_digital_currency_address'
 
@@ -140,6 +140,19 @@ function countOccurrences(haystack: string, needle: string): number {
   return n
 }
 
+/** Count and decode every idType independently of entry/id extraction. */
+function identifierTypes(block: string, where: string): string[] {
+  const types = [...block.matchAll(/<idType>([^<]*)<\/idType>/g)]
+  if (types.length !== countOccurrences(block, '<idType') ||
+      types.length !== countOccurrences(block, '</idType>')) {
+    throw new SdnParseError('malformed_identifier_type', where)
+  }
+  return types.map((m) => {
+    assertNoStrayEntities(m[1], where)
+    return decodeXmlText(m[1], where).trim()
+  })
+}
+
 /**
  * Parse SDN.XML and extract every digital currency address identifier.
  *
@@ -147,13 +160,14 @@ function countOccurrences(haystack: string, needle: string): number {
  * can never become an index. DTDs/entities are refused outright (no XXE or
  * entity expansion is possible because no DTD is ever processed), the document
  * must be complete (closing root), the stated Record_Count must equal the parsed
- * entry count, and every "Digital Currency Address - " occurrence anywhere in the
+ * entry count, and every decoded digital-currency identifier type in the
  * document must have been extracted as an identifier.
  */
 export function parseSdnXml(xml: string): ParsedSdnList {
   if (typeof xml !== 'string' || xml.length === 0) throw new SdnParseError('empty', 'no content')
   const doc = xml.charCodeAt(0) === 0xfeff ? xml.slice(1) : xml
   if (/<!DOCTYPE|<!ENTITY/i.test(doc)) throw new SdnParseError('dtd_not_allowed', 'document declares a DTD or entity')
+  const stated = identifierTypes(doc, 'document').filter((t) => t.startsWith(DCA_TYPE_PREFIX)).length
   const head = doc.slice(0, 2048)
   if (/<html[\s>]/i.test(head)) throw new SdnParseError('not_xml', 'received an HTML document')
   const root = head.match(/<sdnList\b([^>]*)>/)
@@ -193,7 +207,7 @@ export function parseSdnXml(xml: string): ParsedSdnList {
     const sdnUid = Number(uidMatch[1])
     if (seenEntryUids.has(sdnUid)) throw new SdnParseError('duplicate_entry_uid', String(sdnUid))
     seenEntryUids.add(sdnUid)
-    if (!body.includes(DCA_TYPE_PREFIX)) continue
+    if (!identifierTypes(body, 'sdnEntry ' + sdnUid).some((t) => t.startsWith(DCA_TYPE_PREFIX))) continue
 
     const where = `sdnEntry ${sdnUid}`
     // Entry-level name/type precede the first nested <...List> element.
@@ -212,8 +226,10 @@ export function parseSdnXml(xml: string): ParsedSdnList {
     if (idLists.length !== 1) throw new SdnParseError('unexpected_id_list', `${where}: ${idLists.length} <idList>`)
     for (const idm of idLists[0][1].matchAll(/<id>([\s\S]*?)<\/id>/g)) {
       const idBody = idm[1]
-      const idType = textOf(idBody, 'idType', where)
-      if (!idType || !idType.startsWith(DCA_TYPE_PREFIX)) continue
+      const types = identifierTypes(idBody, where)
+      if (types.length !== 1) throw new SdnParseError('malformed_identifier_type', where)
+      const [idType] = types
+      if (!idType.startsWith(DCA_TYPE_PREFIX)) continue
       const idUidRaw = idBody.match(/<uid>(\d+)<\/uid>/)?.[1]
       if (!idUidRaw) throw new SdnParseError('identifier_without_uid', where)
       const idUid = Number(idUidRaw)
@@ -244,11 +260,13 @@ export function parseSdnXml(xml: string): ParsedSdnList {
   if (entryCount !== recordCount) {
     throw new SdnParseError('record_count_mismatch', `Record_Count ${recordCount}, parsed ${entryCount}`)
   }
-  const stated = countOccurrences(doc, `<idType>${DCA_TYPE_PREFIX}`)
   if (stated !== identifiers.length) {
     throw new SdnParseError('identifier_count_mismatch', `${stated} in document, ${identifiers.length} extracted`)
   }
-  if (countOccurrences(doc, DCA_TYPE_PREFIX) !== stated) {
+  // Decode only for this independent coverage check, never as parser markup.
+  // Thus an encoded type cannot evade the count, nor can encoded outside text.
+  assertNoStrayEntities(doc, 'document')
+  if (countOccurrences(decodeXmlText(doc, 'document'), DCA_TYPE_PREFIX) !== stated) {
     throw new SdnParseError('identifier_outside_id_list', 'digital currency address text outside <idType>')
   }
 

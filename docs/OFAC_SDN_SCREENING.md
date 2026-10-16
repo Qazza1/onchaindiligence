@@ -143,6 +143,8 @@ dashboards.
 3. Env vars: MCP `CRON_SECRET` (≥32 random characters); this API `SANCTIONS_DATABASE_URL` (the reader
    role's connection string); GitHub secret `OFAC_REFRESH_TOKEN` in this repository = the MCP `CRON_SECRET`.
 4. Merge and deploy the MCP change. Its wallet routes keep answering `503 no_snapshot` until step 5.
+   Readers require parser `ocd-ofac-sdn-dca/2`; a prior `/1` index is unavailable until a refresh
+   rebuilds it, even if OFAC's source bytes have not changed. Historical signed evidence is unchanged.
 5. Trigger one refresh (`curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://mcp.onchaindiligence.com/internal/sanctions/refresh`)
    and expect `200 {"outcome":"activated", ...}` with the expected `source_sha256` and `publish_date`.
 6. Merge and deploy this change (a new deploy is needed for the env var). Check `GET /health` shows
