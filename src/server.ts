@@ -3,7 +3,7 @@
  * ---------
  * Compliance Diligence Suite — MPP-gated endpoints on Tempo:
  *
- *   GET /screen/:address          — sanctions check only  (Chainalysis)
+ *   GET /screen/:address          — wallet screen only    (OFAC SDN digital currency addresses)
  *   GET /verdict/:address         — unified signed PASS/WARN/BLOCK verdict
  *   GET /company/:companyNumber   — UK company check only (Companies House)
  *   GET /diligence                — both, bundled          (?wallet & ?company)
@@ -22,13 +22,17 @@ import { Mppx, tempo, discovery } from 'mppx/hono'
 import { config, assertConfigured } from './config.js'
 import {
   screenAddress,
-  buildAttribution as chainalysisAttribution,
-  ChainalysisRateLimitError,
-  ChainalysisUpstreamError,
+  buildAttribution as walletSanctionsAttribution,
+  loadUsableSnapshot,
+  runWithPinnedSnapshot,
+  sanctionsDataStatus,
+  sanctionsUnavailableBody,
+  invalidAddressBody,
+  InvalidWalletAddressError,
   SanctionsUnavailableError,
   SANCTIONS_UNAVAILABLE_CODE,
-  SANCTIONS_UNAVAILABLE_MESSAGE,
-} from './chainalysis.js'
+} from './walletSanctions.js'
+import { classifyAddress, type LoadedSnapshot } from './ofacSdnDigitalCurrency.js'
 import {
   checkCompany,
   buildAttribution as companiesHouseAttribution,
@@ -36,7 +40,7 @@ import {
   CompaniesHouseUpstreamError,
 } from './companiesHouse.js'
 import { createRateLimiter, callerKeyFromHeaders } from './rateLimit.js'
-import { chainalysisHealthy, companiesHouseHealthy, edgarHealthy } from './health.js'
+import { companiesHouseHealthy, edgarHealthy } from './health.js'
 import { logPaymentSuccess, logPaymentFailed } from './paymentLog.js'
 import {
   attest,
@@ -236,12 +240,32 @@ function healthGate(check: () => Promise<boolean>, providerName: string): Middle
   }
 }
 
-// INCIDENT CONTAINMENT: wallet sanctions screening has no maintained data source
-// (the Chainalysis oracle is deprecated). Terminal gate, placed BEFORE
-// mppx.charge() on every route that needs it: nothing is charged, screened or
-// signed, and the response is explicit rather than a retryable outage.
-const sanctionsUnavailableGate: MiddlewareHandler = async (c) =>
-  c.json({ error: SANCTIONS_UNAVAILABLE_CODE, message: SANCTIONS_UNAVAILABLE_MESSAGE }, 503)
+// Wallet screening gate, placed BEFORE mppx.charge() on every route that needs
+// a sanctions result. Loads the active OFAC SDN snapshot and requires it to be
+// fresh (walletSanctions.ts); otherwise 503 sanctions_screening_unavailable and
+// no payment is requested. The snapshot judged usable here is pinned for the
+// rest of the request, so the paid handler screens against exactly it and
+// cannot fail on a second store read after the caller has paid.
+async function usableSnapshotOrResponse(c: any): Promise<LoadedSnapshot | Response> {
+  try {
+    return await loadUsableSnapshot()
+  } catch (err) {
+    if (err instanceof SanctionsUnavailableError) return c.json(sanctionsUnavailableBody(err), 503)
+    throw err
+  }
+}
+
+const sanctionsSnapshotGate: MiddlewareHandler = async (c, next) => {
+  const snapshot = await usableSnapshotOrResponse(c)
+  if (snapshot instanceof Response) return snapshot
+  return runWithPinnedSnapshot(snapshot, () => next())
+}
+
+function unsupportedAddressResponse(c: any, input: string) {
+  return classifyAddress(input) === 'unsupported'
+    ? c.json(invalidAddressBody(new InvalidWalletAddressError('unsupported_address_format', input)), 400)
+    : null
+}
 
 // The paid result contract is: pay only if a successful signed result can
 // actually be produced. Every paid route must confirm signing is enabled and
@@ -270,7 +294,7 @@ const validateAddressOrEns: MiddlewareHandler = async (c, next) => {
   const input = c.req.param('address')?.trim() ?? ''
   const isAddress = /^0x[0-9a-fA-F]{40}$/.test(input)
   if ((!isAddress && !looksLikeEns(input)) || input.length > 255) {
-    return c.json({ error: 'invalid address or ENS name parameter' }, 400)
+    return unsupportedAddressResponse(c, input) ?? c.json({ error: 'invalid address or ENS name parameter' }, 400)
   }
   await next()
 }
@@ -318,7 +342,7 @@ const validateDiligenceQuery: MiddlewareHandler = async (c, next) => {
   if (wallet) {
     const isAddress = /^0x[0-9a-fA-F]{40}$/.test(wallet)
     if ((!isAddress && !looksLikeEns(wallet)) || wallet.length > 255) {
-      return c.json({ error: 'invalid wallet address or ENS name' }, 400)
+      return unsupportedAddressResponse(c, wallet) ?? c.json({ error: 'invalid wallet address or ENS name' }, 400)
     }
   }
   if (company && company.length > 20) {
@@ -381,7 +405,7 @@ app.get(
   '/screen/:address',
   rateLimit,
   validateAddressOrEns,
-  sanctionsUnavailableGate,
+  sanctionsSnapshotGate,
   requireSigningReadiness,
   mppx.charge({ amount: config.pricing.sanctionsCheck }),
   async (c) => {
@@ -400,7 +424,7 @@ app.get(
         attest({
           ...result,
           ...(ens ? { ens_name: ens, resolved_address: address } : {}),
-          ...chainalysisAttribution(),
+          ...walletSanctionsAttribution(),
           checked_at: new Date().toISOString(),
         })
       )
@@ -427,7 +451,7 @@ app.get(
   '/verdict/:address',
   rateLimit,
   validateAddressOrEns,
-  sanctionsUnavailableGate,
+  sanctionsSnapshotGate,
   requireSigningReadiness,
   mppx.charge({ amount: config.pricing.sanctionsCheck }),
   async (c) => {
@@ -645,16 +669,22 @@ app.get(
 // linked — see the `link_disclaimer` field, which is not optional.
 // ---------------------------------------------------------------------
 // A pre-payment guard specific to /diligence: only gate on the upstream(s)
-// the caller is actually about to use. Gating on Chainalysis when the
+// the caller is actually about to use. Gating on sanctions data when the
 // caller only asked for a company check (or vice-versa) would wrongly
 // block a call that could have succeeded.
 const diligenceHealthGate: MiddlewareHandler = async (c, next) => {
   const wantsWallet = !!c.req.query('wallet')
   const wantsCompany = !!c.req.query('company')
 
-  // A wallet check cannot be produced, so refuse the whole request before payment
-  // rather than charge for (and sign) a bundle with a missing sanctions result.
-  if (wantsWallet) return sanctionsUnavailableGate(c, next)
+  // A requested wallet check needs usable sanctions data. Without it, refuse the
+  // whole request before payment rather than charge for (and sign) a bundle with
+  // a missing sanctions result. With it, the snapshot is pinned for the handler.
+  let snapshot: LoadedSnapshot | null = null
+  if (wantsWallet) {
+    const loaded = await usableSnapshotOrResponse(c)
+    if (loaded instanceof Response) return loaded
+    snapshot = loaded
+  }
 
   const checks: Array<Promise<{ name: string; ok: boolean }>> = []
   if (wantsCompany) checks.push(companiesHouseHealthy().then((ok) => ({ name: 'Companies House', ok })))
@@ -676,6 +706,7 @@ const diligenceHealthGate: MiddlewareHandler = async (c, next) => {
       )
     }
   }
+  if (snapshot) return runWithPinnedSnapshot(snapshot, () => next())
   await next()
 }
 
@@ -714,7 +745,7 @@ app.get(
 
     if (walletOutcome) {
       response.wallet_check = walletOutcome.ok
-        ? { ...walletOutcome.value, ...chainalysisAttribution() }
+        ? { ...walletOutcome.value, ...walletSanctionsAttribution() }
         : { error: walletOutcome.error }
     }
 
@@ -772,7 +803,7 @@ app.get(
   '/web/screen/:address',
   rateLimit,
   validateAddressOrEns,
-  sanctionsUnavailableGate,
+  sanctionsSnapshotGate,
   requireSigningReadiness,
   mppx.charge({ amount: config.pricing.webSanctionsCheck }),
   async (c) => {
@@ -787,7 +818,7 @@ app.get(
         attest({
           ...result,
           ...(ens ? { ens_name: ens, resolved_address: address } : {}),
-          ...chainalysisAttribution(),
+          ...walletSanctionsAttribution(),
           tier: 'web',
           checked_at: new Date().toISOString(),
         })
@@ -923,8 +954,11 @@ app.get(
     if (!attestationEnabled() || !attestationSigningReady()) {
       return c.json({ ready: false, error: 'attestation signer is not active' }, 503)
     }
-    if (!(await chainalysisHealthy())) {
-      return c.json({ ready: false, error: SANCTIONS_UNAVAILABLE_CODE }, 503)
+    try {
+      await loadUsableSnapshot()
+    } catch (err) {
+      const reason = err instanceof SanctionsUnavailableError ? err.reason : 'store_unavailable'
+      return c.json({ ready: false, error: SANCTIONS_UNAVAILABLE_CODE, reason }, 503)
     }
     return c.json({ ready: true })
   }
@@ -938,7 +972,7 @@ app.get(
   rateLimit,
   requireInternalAttestationAuth,
   validateAddressOrEns,
-  sanctionsUnavailableGate,
+  sanctionsSnapshotGate,
   async (c) => {
     if (!attestationEnabled() || !attestationSigningReady()) {
       return c.json({ error: 'attestation signer is not active' }, 503)
@@ -1017,23 +1051,18 @@ async function settleSafely<T>(
 }
 
 function describeError(err: unknown): string {
-  if (err instanceof SanctionsUnavailableError) return SANCTIONS_UNAVAILABLE_MESSAGE
-  if (err instanceof ChainalysisRateLimitError) return 'sanctions provider rate-limited, please retry shortly'
-  if (err instanceof ChainalysisUpstreamError) return `sanctions provider error (status ${err.status})`
+  if (err instanceof SanctionsUnavailableError) return err.message
+  if (err instanceof InvalidWalletAddressError) return err.message
   if (err instanceof CompanyNotFoundError) return err.message
   if (err instanceof CompaniesHouseUpstreamError) return `Companies House error (status ${err.status})`
   return 'unexpected error during lookup'
 }
 
 function handleUpstreamError(c: any, err: unknown) {
-  if (err instanceof SanctionsUnavailableError) {
-    return c.json({ error: SANCTIONS_UNAVAILABLE_CODE, message: SANCTIONS_UNAVAILABLE_MESSAGE }, 503)
-  }
+  if (err instanceof SanctionsUnavailableError) return c.json(sanctionsUnavailableBody(err), 503)
+  if (err instanceof InvalidWalletAddressError) return c.json(invalidAddressBody(err), 400)
   if (err instanceof CompanyNotFoundError) {
     return c.json({ error: err.message }, 404)
-  }
-  if (err instanceof ChainalysisRateLimitError) {
-    return c.json({ error: describeError(err) }, 503)
   }
   if (err instanceof OfacUpstreamError) {
     return c.json(
@@ -1216,8 +1245,8 @@ app.get('/.well-known/attestation-keys/:keyId', (c) => {
 // the status code behave correctly. No payment, no rate limit.
 // ---------------------------------------------------------------------
 app.get('/health', async (c) => {
-  const [oracleOk, companiesHouseOk, edgarOk] = await Promise.all([
-    chainalysisHealthy().catch(() => false),
+  const [sanctionsData, companiesHouseOk, edgarOk] = await Promise.all([
+    sanctionsDataStatus(),
     companiesHouseHealthy().catch(() => false),
     edgarHealthy().catch(() => false),
   ])
@@ -1226,7 +1255,7 @@ app.get('/health', async (c) => {
   // Upstreams determine readiness. Signing being off is a degraded state for
   // a compliance tool (results would be unsigned), so we surface it — but we
   // don't 503 purely on signing, since checks still return correct data.
-  const upstreamsHealthy = oracleOk && companiesHouseOk && edgarOk
+  const upstreamsHealthy = sanctionsData.status === 'current' && companiesHouseOk && edgarOk
   const status = upstreamsHealthy ? 'ok' : 'degraded'
 
   if (!upstreamsHealthy) c.header('Retry-After', '30')
@@ -1236,10 +1265,14 @@ app.get('/health', async (c) => {
       status,
       checked_at: new Date().toISOString(),
       upstreams: {
-        sanctions_oracle: oracleOk ? 'reachable' : 'retired',
+        // The Chainalysis oracle is retired permanently; wallet screening uses
+        // the OFAC SDN snapshot reported in ofac_sdn / sanctions_data.
+        sanctions_oracle: 'retired',
+        ofac_sdn: sanctionsData.status,
         companies_house: companiesHouseOk ? 'reachable' : 'unreachable',
         sec_edgar: edgarOk ? 'reachable' : 'unreachable',
       },
+      sanctions_data: sanctionsData,
       attestation: signingConfigured ? 'configured' : 'not_configured',
     },
     upstreamsHealthy ? 200 : 503
@@ -1250,15 +1283,15 @@ app.get('/', (c) =>
   c.json({
     service: config.service.title,
     routes: {
-      'GET /screen/:address': `UNAVAILABLE (deprecated sanctions source; 503 before payment) — $${config.pricing.sanctionsCheck}`,
-      'GET /verdict/:address': `UNAVAILABLE (deprecated sanctions source; 503 before payment) — $${config.pricing.sanctionsCheck}`,
+      'GET /screen/:address': `Exact OFAC SDN digital-currency-address match for an EVM address (503 before payment if the snapshot is not current) — $${config.pricing.sanctionsCheck}`,
+      'GET /verdict/:address': `Unified signed PASS/WARN/BLOCK counterparty verdict on the same OFAC SDN data — $${config.pricing.sanctionsCheck}`,
       'GET /screen-name?name=': `OFAC SDN name screening — $${config.pricing.nameScreen}`,
       'GET /company/:companyNumber': `UK company check only — $${config.pricing.companyCheck}`,
       'GET /us-company?q=': `US public company check (SEC EDGAR) — $${config.pricing.usCompanyCheck}`,
       'POST /attest': 'Internal authenticated result-signing service',
       'POST /anchor': `Anchor an attestation on Tempo — $${config.pricing.nameScreen}`,
       'GET /anchored?signature=': 'Check if an attestation is anchored on-chain — free',
-      'GET /diligence?wallet=&company=': `Combined check; requests with wallet= are UNAVAILABLE (503 before payment) — $${config.pricing.combinedDiligence}`,
+      'GET /diligence?wallet=&company=': `Combined check (wallet= needs a current OFAC SDN snapshot; 503 before payment otherwise) — $${config.pricing.combinedDiligence}`,
     },
     health_url: '/health',
     attestation: {

@@ -32,3 +32,11 @@ Counterparty exposure inside the verdict is unreachable (the verdict is refused 
 `partial` (never clean) if reached. Tooling that calls the oracle directly (`tools/p1_8/capture-providers.ts`,
 `test/exposure.ts`) will now fail or no longer exercise a live oracle. A maintained OFAC-based source,
 freshness policy and provenance binding are separate work (see the MCP incident document).
+
+## Permanent remediation
+Wallet screening now uses validated, freshness-checked snapshots of the official OFAC SDN List
+digital currency address identifiers (`docs/OFAC_SDN_SCREENING.md`). The containment behaviour above is
+what every wallet route still does whenever no current snapshot is available: `503
+sanctions_screening_unavailable` (now with a `reason`) before payment, never a negative. The Chainalysis
+oracle is never read; `src/chainalysis.ts` is removed. `tools/p1_8/capture-providers.ts` (a one-off
+historical fixture capture tool, not built or run in CI) still imports it and no longer runs.

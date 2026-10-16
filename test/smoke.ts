@@ -1,7 +1,7 @@
 /**
  * test/smoke.ts
  * --------------
- * Exercises the core business logic (chainalysis.ts, companiesHouse.ts,
+ * Exercises the core business logic (walletSanctions.ts, companiesHouse.ts,
  * and the bundling logic in server.ts) WITHOUT making real network calls
  * or requiring a real MPP payment — both of which aren't available in
  * every environment this gets tested in.
@@ -48,7 +48,7 @@ process.env.ANCHOR_CHAIN_ID = '42431'
 process.env.ANCHOR_CONTRACT_ADDRESS = '0x1111111111111111111111111111111111111111'
 process.env.ANCHOR_PRIVATE_KEY = '0x' + '11'.repeat(32)
 
-const { screenAddress } = await import('../src/chainalysis.js')
+const { screenAddress } = await import('../src/walletSanctions.js')
 const { checkCompany, CompanyNotFoundError } = await import('../src/companiesHouse.js')
 const { authorizeInternalBearer } = await import('../src/internalAuth.js')
 const { checkDirectExposure } = await import('../src/exposure.js')
@@ -69,7 +69,7 @@ async function test(name: string, fn: () => Promise<void>) {
   }
 }
 
-console.log('Sanctions oracle client:')
+console.log('Wallet sanctions screening:')
 
 await test('internal attestation auth fails closed and accepts only the configured bearer', async () => {
   const token = 'a-secure-internal-token-that-is-long-enough'
@@ -101,33 +101,34 @@ await test('OpenAPI models signed envelopes and full-envelope anchoring accurate
 })
 
 await test('invalid address is rejected as a 400-class error (no network call)', async () => {
-  const { ChainalysisUpstreamError } = await import('../src/chainalysis.js')
+  const { InvalidWalletAddressError } = await import('../src/walletSanctions.js')
   try {
     await screenAddress('not-an-address')
     assert.fail('expected an error to be thrown')
   } catch (err: any) {
-    assert.ok(err instanceof ChainalysisUpstreamError)
+    assert.ok(err instanceof InvalidWalletAddressError)
     assert.strictEqual(err.status, 400)
   }
 })
 
 await test('too-short hex is rejected as a 400-class error', async () => {
-  const { ChainalysisUpstreamError } = await import('../src/chainalysis.js')
+  const { InvalidWalletAddressError } = await import('../src/walletSanctions.js')
   try {
     await screenAddress('0x123')
     assert.fail('expected an error to be thrown')
   } catch (err: any) {
-    assert.ok(err instanceof ChainalysisUpstreamError)
+    assert.ok(err instanceof InvalidWalletAddressError)
     assert.strictEqual(err.status, 400)
   }
 })
 
-await test('attribution is present, honest, and oracle-aware', async () => {
-  const { buildAttribution } = await import('../src/chainalysis.js')
+await test('attribution names the OFAC SDN source and points at the signed limits', async () => {
+  const { buildAttribution } = await import('../src/walletSanctions.js')
   const a = buildAttribution()
   assert.ok(a.source && a.note)
-  assert.match(a.source, /oracle.*deprecated/i)
-  assert.match(a.note, /unavailable/i) // incident: no current sanctions finding is claimed
+  assert.match(a.source, /OFAC.*SDN/)
+  assert.doesNotMatch(a.source, /chainalysis/i)
+  assert.match(a.note, /not legal advice or clearance/i)
 })
 
 await test('direct exposure is complete when the supported window has no counterparties', async () => {
@@ -180,7 +181,7 @@ await test('the 25-counterparty cap is reported as partial rather than clean', a
   assert.strictEqual(result.evaluated, false)
   assert.strictEqual(result.counterparties_found, 26)
   assert.strictEqual(result.counterparties_considered, 25)
-  // Sanctions screening is retired (deprecated oracle): counterparties are NOT screened and are never treated as clean.
+  // No sanctions snapshot store is configured here: counterparties are NOT screened and are never treated as clean.
   assert.strictEqual(result.counterparties_screened, 0)
   assert.strictEqual(result.screening_failures, 25)
   assert.strictEqual(result.counterparties_omitted, 1)
@@ -207,7 +208,10 @@ const exposureFixture = (
 const screenFixture = (sanctioned: boolean) => ({
   address: '0x0000000000000000000000000000000000000001',
   sanctioned,
+  match_status: sanctioned ? ('listed' as const) : ('not_listed' as const),
+  matches: [],
   identifications: [],
+  screening: {} as any,
 })
 
 await test('BLOCK takes precedence when the subject address is sanctioned', async () => {

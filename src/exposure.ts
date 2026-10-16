@@ -25,7 +25,7 @@
  * Data source: Tempo's public REST API — free, keyless, no payment.
  */
 
-import { screenAddress } from './chainalysis.js'
+import { screenAddress } from './walletSanctions.js'
 
 const TEMPO_API = 'https://api.tempo.xyz/v1'
 const CHAIN_ID = 4217 // Tempo mainnet
@@ -38,7 +38,7 @@ const USER_AGENT = 'OnchainDiligence/1.0 (support@onchaindiligence.com)'
 const TEMPO_API_KEY = process.env.TEMPO_API_KEY || ''
 
 const PAGE_SIZE = 200 // hard maximum the endpoint accepts
-const MAX_COUNTERPARTIES_TO_SCREEN = 25 // bounds oracle reads per verdict
+const MAX_COUNTERPARTIES_TO_SCREEN = 25 // bounds screens per verdict
 const SCREEN_CONCURRENCY = 8
 
 export interface ExposureResult {
@@ -51,7 +51,7 @@ export interface ExposureResult {
   counterparties_screened: number
   counterparties_omitted: number
   screening_failures: number
-  /** Counterparties the oracle currently designates as sanctioned. */
+  /** Counterparties listed as OFAC SDN digital currency addresses in the verdict's snapshot. */
   sanctioned_counterparties: string[]
   /** Present only when evaluated === false. */
   unevaluated_reason?: string
