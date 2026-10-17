@@ -149,15 +149,8 @@ async function getHealth(
   return applyProbeResult(b, healthy, now)
 }
 
-/**
- * INCIDENT CONTAINMENT: wallet sanctions screening has no usable source (the
- * Chainalysis oracle is deprecated; a reachable RPC proves nothing about
- * coverage), so this is permanently false and issues no RPC call. It is only
- * ever read to refuse or degrade, never to enable screening.
- */
-export async function chainalysisHealthy(): Promise<boolean> {
-  return false
-}
+// The retired Chainalysis oracle has no health probe: wallet screening readiness
+// is the OFAC SDN snapshot's freshness (walletSanctions.ts sanctionsDataStatus).
 
 /** Is the Companies House API reachable right now? (cached) */
 export function companiesHouseHealthy(): Promise<boolean> {

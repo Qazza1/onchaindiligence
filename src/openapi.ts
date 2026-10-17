@@ -66,14 +66,18 @@ export function buildOpenApiSpec() {
       '/screen/{address}': {
         get: {
           tags: ['Checks'],
-          summary: 'Sanctions screen a wallet address (CURRENTLY UNAVAILABLE)',
+          summary: 'Screen an EVM wallet against OFAC SDN digital currency addresses',
           description:
-            'INCIDENT: currently unavailable. The Chainalysis oracle is deprecated and unmaintained ' +
-            '(last update 2026-03-18); this route returns 503 sanctions_screening_unavailable before any ' +
-            'payment is requested and never returns a "not sanctioned" result. Historical description: ' +
-            'Screens a single wallet address against the Chainalysis on-chain ' +
-            'sanctions oracle (US/EU/UN lists) via a read-only isSanctioned() ' +
-            'call on Ethereum mainnet. Returns a signed boolean flag.',
+            'Exact, case-insensitive match of a 20-byte EVM address against every digital currency ' +
+            'address identifier on the official OFAC SDN List (SDN.XML from the OFAC Sanctions List ' +
+            'Service), whatever currency label OFAC assigned. match_status is listed or not_listed; ' +
+            'screening.dataset records the exact snapshot (publication date, source SHA-256, retrieval ' +
+            'and revalidation times, parser version). Coverage is the OFAC SDN List only: not EU, UN, ' +
+            'UK or OFAC non-SDN lists, no ownership / 50 Percent Rule analysis. A non-match is not legal ' +
+            'clearance (see screening.limitations). If no current validated snapshot is available the ' +
+            'route returns 503 sanctions_screening_unavailable BEFORE payment and never a negative. ' +
+            'Non-EVM addresses return 400 unsupported_address_format. Results signed before 2026-10-16 ' +
+            'came from the retired Chainalysis oracle and are historical claims, not re-evaluated.',
           operationId: 'screenWallet',
           parameters: [
             {
@@ -105,13 +109,12 @@ export function buildOpenApiSpec() {
       '/verdict/{address}': {
         get: {
           tags: ['Checks'],
-          summary: 'Signed PASS / WARN / BLOCK counterparty verdict (CURRENTLY UNAVAILABLE)',
+          summary: 'Signed PASS / WARN / BLOCK counterparty verdict',
           description:
-            'INCIDENT: currently unavailable. The verdict depends on the deprecated Chainalysis oracle, so ' +
-            'this route returns 503 sanctions_screening_unavailable before any payment is requested. ' +
-            'One call, one signed decision. BLOCK means the address itself is ' +
-            'sanctioned. WARN means it is NOT sanctioned but transacted directly ' +
-            'with an address that is - a counterparty risk signal, never a ' +
+            'One call, one signed decision, on the same OFAC SDN digital-currency-address data as ' +
+            '/screen (503 sanctions_screening_unavailable before payment if no current snapshot). ' +
+            'BLOCK means the address itself is listed. WARN means it is NOT listed but transacted ' +
+            'directly with an address that is - a counterparty risk signal, never a ' +
             'designation of this address. PASS means neither was found within the ' +
             'disclosed scope; it is not a full risk clearance. Direct counterparty ' +
             'exposure is one-hop, Tempo-mainnet-only, and covers a bounded recent ' +
@@ -274,9 +277,9 @@ export function buildOpenApiSpec() {
           tags: ['Checks'],
           summary: 'Combined diligence (wallet + company)',
           description:
-            'INCIDENT: requests that include wallet are currently refused with 503 ' +
-            'sanctions_screening_unavailable before any payment; company-only requests are unaffected. ' +
-            'Runs the sanctions screen and the company check in parallel. ' +
+            'Runs the OFAC SDN wallet screen and the company check in parallel. A request that ' +
+            'includes wallet is refused with 503 sanctions_screening_unavailable before payment ' +
+            'when no current snapshot is available; company-only requests do not need it. ' +
             'At least one of wallet or company must be supplied. The two ' +
             'checks are independent — the response always includes a ' +
             'link_disclaimer stating that no link between the wallet and the ' +
@@ -607,8 +610,59 @@ export function buildOpenApiSpec() {
           type: 'object',
           properties: {
             address: { type: 'string' },
-            sanctioned: { type: 'boolean' },
-            identifications: { type: 'array', items: { type: 'object' } },
+            match_status: {
+              type: 'string',
+              enum: ['listed', 'not_listed'],
+              description: 'listed = exact match in the snapshot in screening.dataset. not_listed is not legal clearance.',
+            },
+            sanctioned: {
+              type: 'boolean',
+              description: 'Compatibility field: true iff match_status is listed. Read match_status and screening.',
+            },
+            matches: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  sdn_uid: { type: 'integer' },
+                  sdn_name: { type: 'string' },
+                  sdn_type: { type: 'string', nullable: true },
+                  programs: { type: 'array', items: { type: 'string' } },
+                  identifier_type: { type: 'string', example: 'Digital Currency Address - ETH' },
+                  listed_value: { type: 'string' },
+                  entry_url: { type: 'string' },
+                },
+              },
+            },
+            identifications: { type: 'array', items: { type: 'object' }, description: 'Compatibility mirror of matches.' },
+            screening: {
+              type: 'object',
+              properties: {
+                scope: { type: 'string', example: 'ofac_sdn_digital_currency_address' },
+                coverage: { type: 'string' },
+                matching: { type: 'string' },
+                evaluated_at: { type: 'string', format: 'date-time' },
+                dataset: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    source_url: { type: 'string' },
+                    source_object: { type: 'string', nullable: true },
+                    publication_id: { type: 'string', nullable: true },
+                    publish_date: { type: 'string', format: 'date' },
+                    record_count: { type: 'integer' },
+                    retrieved_at: { type: 'string', format: 'date-time' },
+                    revalidated_at: { type: 'string', format: 'date-time' },
+                    source_sha256: { type: 'string', description: 'Hex SHA-256 of the SDN.XML bytes.' },
+                    index_sha256: { type: 'string' },
+                    parser_version: { type: 'string' },
+                    matching_version: { type: 'string' },
+                    snapshot_id: { type: 'string' },
+                  },
+                },
+                limitations: { type: 'array', items: { type: 'string' } },
+              },
+            },
             source: { type: 'string' },
             checked_at: { type: 'string', format: 'date-time' },
           },
@@ -638,8 +692,9 @@ export function buildOpenApiSpec() {
               type: 'string',
               enum: ['PASS', 'WARN', 'BLOCK'],
               description:
-                'BLOCK = this address is sanctioned. WARN = not sanctioned, but a ' +
-                'direct counterparty is. PASS = neither found within the disclosed scope.',
+                'BLOCK = this address is listed as an OFAC SDN digital currency address. WARN = not ' +
+                'listed, but a direct counterparty is (or exposure was incomplete). PASS = neither ' +
+                'found within the disclosed scope; not legal clearance.',
               example: 'PASS',
             },
             reasons: {
@@ -656,6 +711,9 @@ export function buildOpenApiSpec() {
                   properties: {
                     checked: { type: 'boolean' },
                     sanctioned: { type: 'boolean' },
+                    match_status: { type: 'string', enum: ['listed', 'not_listed'] },
+                    matches: { type: 'array', items: { type: 'object' } },
+                    screening: { type: 'object', description: 'Same provenance and limitations as SanctionsData.screening.' },
                   },
                 },
                 direct_counterparty_exposure: {
@@ -797,10 +855,15 @@ export function buildOpenApiSpec() {
             upstreams: {
               type: 'object',
               properties: {
-                sanctions_oracle: { type: 'string', enum: ['reachable', 'unreachable', 'retired'] },
+                sanctions_oracle: { type: 'string', enum: ['retired'], description: 'The Chainalysis oracle is no longer used.' },
+                ofac_sdn: { type: 'string', enum: ['current', 'stale', 'unavailable', 'not_configured'] },
                 companies_house: { type: 'string', enum: ['reachable', 'unreachable'] },
                 sec_edgar: { type: 'string', enum: ['reachable', 'unreachable'] },
               },
+            },
+            sanctions_data: {
+              type: 'object',
+              description: 'Active OFAC SDN snapshot: status, reason, publish_date, revalidated_at, source_sha256, snapshot_id, max_staleness_hours.',
             },
             attestation: { type: 'string', enum: ['configured', 'not_configured'] },
           },
@@ -872,8 +935,9 @@ export function buildOpenApiSpec() {
         },
         Unavailable: {
           description:
-            'An upstream is unreachable. Returned before payment, so you are ' +
-            'not charged. Retry after the Retry-After interval.',
+            'An upstream is unreachable, or (error sanctions_screening_unavailable, with a reason) no ' +
+            'current validated OFAC SDN snapshot is available. Returned before payment, so you are ' +
+            'not charged.',
           content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
         },
       },

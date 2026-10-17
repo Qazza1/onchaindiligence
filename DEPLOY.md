@@ -29,7 +29,7 @@ mainnet token documentation. Do **not** guess it.
 
 DoomStreak was one static HTML file, so Netlify Drop worked. This is a
 **backend server**: it runs code, holds secret API keys, and calls
-Chainalysis + Companies House on every request. A drag-and-drop static
+its data sources (Companies House, SEC EDGAR, the OFAC SDN snapshot store) on every request. A drag-and-drop static
 host can't run code or keep secrets, so it physically can't host this.
 You need a platform that runs Node functions with environment variables —
 that's the Git-connected flow below. It's still only a few steps.
@@ -91,10 +91,13 @@ screen. Add each of these as a separate key/value pair.
 | `ATTESTATION_PRIVATE_KEY` | Ed25519 PKCS8 PEM for signing responses (generate it — see below). Required: production does not boot unsigned. |
 | `ATTESTATION_SERVICE_TOKEN` | a separate 32-byte random secret for trusted server-to-server calls to `/attest` |
 
-There is **no Chainalysis API key**. Wallet sanctions screening is currently
-**suspended** (the public oracle is deprecated; see
-`docs/SANCTIONS_SOURCE_INCIDENT.md`), so `SANCTIONS_ORACLE_RPC_URL` is no longer
-read by any request path and may be left unset.
+Wallet sanctions screening reads the OFAC SDN snapshot store owned by the MCP
+deployment (`docs/OFAC_SDN_SCREENING.md`). Set `SANCTIONS_DATABASE_URL` to a
+connection string for a **SELECT-only** Postgres role on that store. Without it,
+every wallet-screening route returns `503 sanctions_screening_unavailable` before
+payment. Optional: `SANCTIONS_MAX_STALENESS_HOURS` (default 6, clamped to 1-24).
+The retired Chainalysis oracle is never read; `SANCTIONS_ORACLE_RPC_URL` may be
+left unset.
 
 Generate the `MPP_SECRET_KEY` on your machine and paste the output:
 
@@ -148,7 +151,9 @@ mainnet.
 **Two other responses you might see, both intentional, not bugs:**
 
 - **503 "upstream temporarily unavailable"** — the health gate ran before
-  payment and found Chainalysis or Companies House unreachable right now.
+  payment and found Companies House unreachable right now. A wallet route
+  answers `503 sanctions_screening_unavailable` (with a `reason`) when no
+  current OFAC SDN snapshot is available.
   No payment was requested. This protects callers from paying for a call
   that would fail. Retry shortly.
 - **429 "rate limit exceeded"** — you (or one caller) exceeded the

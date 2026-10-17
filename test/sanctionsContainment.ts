@@ -3,8 +3,10 @@
  *
  * The Chainalysis oracle is deprecated (last update 2026-03-18). OFAC lists
  * 0x252a8bd2319d8a555b872990601221b3a2053bce, yet the old reader could sign a
- * "not sanctioned" for it. Every route that depended on the oracle must now
- * fail closed, BEFORE any payment is requested, and nothing may be signed.
+ * "not sanctioned" for it. The oracle is never read again, and with NO usable
+ * OFAC SDN snapshot (here: no store configured) every wallet-screening route
+ * must fail closed, BEFORE any payment is requested, and nothing may be signed.
+ * The data-available paths are covered by test/ofacSdnScreening.ts.
  *
  * Run: npx tsx test/sanctionsContainment.ts
  */
@@ -21,6 +23,8 @@ process.env.ATTESTATION_SERVICE_TOKEN = serviceToken
 process.env.ATTESTATION_KEY_ACTIVATED_AT = '2026-01-01T00:00:00.000Z'
 process.env.TEMPO_TESTNET = 'true'
 process.env.ATTESTATION_PRIVATE_KEY = crypto.generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+delete process.env.SANCTIONS_DATABASE_URL
+delete process.env.DATABASE_URL
 
 const outbound: string[] = []
 globalThis.fetch = (async (input: string | URL | Request) => {
@@ -30,7 +34,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 
 const reported = '0x252a8bd2319d8a555b872990601221b3a2053bce'
 const { config } = await import('../src/config.js')
-const { screenAddress, SanctionsUnavailableError, ChainalysisUpstreamError, SANCTIONS_UNAVAILABLE_CODE } = await import('../src/chainalysis.js')
+const { screenAddress, SanctionsUnavailableError, InvalidWalletAddressError, SANCTIONS_UNAVAILABLE_CODE } = await import('../src/walletSanctions.js')
 const { evaluateVerdict } = await import('../src/verdict.js')
 const { default: app } = await import('../src/server.js')
 
@@ -38,7 +42,7 @@ const { default: app } = await import('../src/server.js')
 for (const address of [reported, reported.toUpperCase().replace('0X', '0x'), '0x0000000000000000000000000000000000000001']) {
   await assert.rejects(screenAddress(address), SanctionsUnavailableError)
 }
-await assert.rejects(screenAddress('bad'), (e: unknown) => e instanceof ChainalysisUpstreamError && (e as any).status === 400)
+await assert.rejects(screenAddress('bad'), (e: unknown) => e instanceof InvalidWalletAddressError && (e as any).status === 400)
 await assert.rejects(evaluateVerdict(reported), SanctionsUnavailableError) // never a PASS/WARN/BLOCK verdict
 assert.ok(!outbound.some((u) => u.startsWith(config.sanctionsOracle.rpcUrl)), 'the retired oracle RPC must never be queried')
 
@@ -121,5 +125,5 @@ try {
   child.kill()
 }
 
-console.log('PASS: oracle retired; /screen, /verdict, /web/screen, /diligence?wallet, /internal/verdict, stdio MCP fail closed before payment; unrelated routes unaffected')
+console.log('PASS: oracle never read; with no usable snapshot /screen, /verdict, /web/screen, /diligence?wallet, /internal/verdict, stdio MCP fail closed before payment; unrelated routes unaffected')
 process.exit(0)

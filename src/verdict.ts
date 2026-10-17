@@ -8,9 +8,9 @@
 
 import {
   screenAddress,
-  buildAttribution as chainalysisAttribution,
+  buildAttribution as walletSanctionsAttribution,
   type SanctionsResult,
-} from './chainalysis.js'
+} from './walletSanctions.js'
 import { resolveToAddress } from './ens.js'
 import { checkDirectExposure, type ExposureResult } from './exposure.js'
 
@@ -23,7 +23,13 @@ export interface VerdictData extends Record<string, unknown> {
   ens_name?: string
   resolved_address?: string
   signals: {
-    sanctions: { checked: true; sanctioned: boolean }
+    sanctions: {
+      checked: true
+      sanctioned: boolean
+      match_status: SanctionsResult['match_status']
+      matches: SanctionsResult['matches']
+      screening: SanctionsResult['screening']
+    }
     direct_counterparty_exposure: Record<string, unknown>
   }
   verdict_basis: {
@@ -60,19 +66,19 @@ export function buildVerdictData({
 
   if (screen.sanctioned === true) {
     verdict = 'BLOCK'
-    reasons.push('Address is on the sanctions list (OFAC via Chainalysis on-chain oracle).')
+    reasons.push('Address is listed as a digital currency address on the OFAC SDN List (exact match; see signals.sanctions.matches).')
   } else if (exposureHit) {
     // Exposure is a risk signal, not a designation of the subject address.
     verdict = 'WARN'
     const count = exposure.sanctioned_counterparties.length
     reasons.push(
-      `Address is not itself sanctioned, but transacted directly with ` +
-        `${count} sanctioned address${count === 1 ? '' : 'es'} on Tempo mainnet.`
+      `Address is not itself listed, but transacted directly with ` +
+        `${count} OFAC SDN-listed address${count === 1 ? '' : 'es'} on Tempo mainnet.`
     )
     reasons.push('This is a counterparty risk signal, not a designation of this address.')
   } else if (exposure.status !== 'complete') {
     verdict = 'WARN'
-    reasons.push('No sanctions match found for the subject address.')
+    reasons.push('No exact OFAC SDN digital currency address match for the subject address.')
     reasons.push(
       exposure.status === 'failed'
         ? 'Direct counterparty exposure could not be evaluated.'
@@ -82,7 +88,7 @@ export function buildVerdictData({
     )
   } else {
     verdict = 'PASS'
-    reasons.push('No sanctions match found.')
+    reasons.push('No exact OFAC SDN digital currency address match found.')
   }
 
   const directExposure: Record<string, unknown> = {
@@ -104,7 +110,7 @@ export function buildVerdictData({
   }
 
   const liveSignals = ['sanctions']
-  const notEvaluated = ['risk_score', 'mixer_exposure', 'wallet_age', 'sanctions_proximity']
+  const notEvaluated = ['risk_score', 'mixer_exposure', 'wallet_age', 'sanctions_proximity', 'other_sanctions_regimes']
   if (exposure.status === 'complete') liveSignals.push('direct_counterparty_exposure')
   else notEvaluated.unshift('direct_counterparty_exposure')
 
@@ -114,21 +120,29 @@ export function buildVerdictData({
     address,
     ...(ens ? { ens_name: ens, resolved_address: address } : {}),
     signals: {
-      sanctions: { checked: true, sanctioned: screen.sanctioned === true },
+      sanctions: {
+        checked: true,
+        sanctioned: screen.sanctioned === true,
+        match_status: screen.match_status,
+        matches: screen.matches,
+        screening: screen.screening,
+      },
       direct_counterparty_exposure: directExposure,
     },
     verdict_basis: {
       live_signals: liveSignals,
       not_yet_evaluated: notEvaluated,
       note:
-        'BLOCK means the address itself is sanctioned. WARN means it is not ' +
-        'sanctioned but transacted directly with an address that is — a ' +
-        'counterparty risk signal, not a designation. PASS means neither was ' +
-        'found within the scope described in signals.direct_counterparty_exposure.scope; ' +
-        'it is not a full risk clearance. Exposure is one-hop, Tempo-mainnet-only, ' +
-        'and covers a bounded recent window.',
+        'BLOCK means the address itself is listed as an OFAC SDN digital currency ' +
+        'address. WARN means it is not listed but transacted directly with an address ' +
+        'that is (a counterparty risk signal, not a designation), or exposure was ' +
+        'incomplete. PASS means neither was found within the scope described in ' +
+        'signals.sanctions.screening and signals.direct_counterparty_exposure.scope; ' +
+        'it is not legal clearance or a full risk clearance. Sanctions coverage is the ' +
+        'OFAC SDN List only. Exposure is one-hop, Tempo-mainnet-only, and covers a ' +
+        'bounded recent window.',
     },
-    ...chainalysisAttribution(),
+    ...walletSanctionsAttribution(),
     checked_at: checkedAt,
   }
 }

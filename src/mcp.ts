@@ -19,7 +19,7 @@
  * use for local MCP servers. (MCP also supports streamable-HTTP; that's a
  * larger wiring job and is noted as a follow-up in the README.)
  *
- * The actual lookups reuse chainalysis.ts / companiesHouse.ts unchanged, so
+ * The actual lookups reuse walletSanctions.ts / companiesHouse.ts unchanged, so
  * there's a single source of truth for the check logic and its attestation.
  *
  * Run:  npm run mcp      (after building / with tsx)
@@ -31,7 +31,16 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Mppx, tempo, Transport } from 'mppx/server'
 import { config, assertConfigured } from './config.js'
-import { screenAddress, buildAttribution as chainalysisAttribution, sanctionsUnavailableToolResult } from './chainalysis.js'
+import {
+  screenAddress,
+  buildAttribution as walletSanctionsAttribution,
+  assertScreenableAddress,
+  loadUsableSnapshot,
+  runWithPinnedSnapshot,
+  sanctionsUnavailableToolResult,
+  InvalidWalletAddressError,
+  SanctionsUnavailableError,
+} from './walletSanctions.js'
 import { checkCompany, buildAttribution as companiesHouseAttribution } from './companiesHouse.js'
 import { attest } from './attestation.js'
 import { logPaymentSuccess, logPaymentFailed } from './paymentLog.js'
@@ -74,16 +83,39 @@ server.registerTool(
   {
     title: 'Screen a crypto wallet for sanctions',
     description:
-      'CURRENTLY UNAVAILABLE: the sanctions data source (the Chainalysis oracle) is deprecated and ' +
-      'unmaintained. This tool returns an error before any payment is requested and never reports a ' +
-      'wallet as not sanctioned.',
-    inputSchema: { address: z.string().min(10).describe('The crypto wallet address to screen') },
+      'Exact match of an EVM wallet address against OFAC SDN List digital currency address ' +
+      'identifiers (official OFAC data; SDN only, not EU/UN or other lists). A non-match is not ' +
+      'legal clearance. Returns a signed attestation with the dataset snapshot. Charges a small ' +
+      'stablecoin fee per call via MPP on Tempo; refused before payment if the data is not current.',
+    inputSchema: { address: z.string().min(10).describe('EVM wallet address (0x + 40 hex) to screen') },
   },
-  async () => {
-    // Incident containment: refuse BEFORE the payment challenge; nothing is screened or signed.
-    return sanctionsUnavailableToolResult() as any
+  async (args, extra) => {
+    // Validate and require current data BEFORE the payment challenge, then pin it.
+    const ready = await readyForWalletScreen(args.address)
+    if ('isError' in ready) return ready as any
+    return runWithPinnedSnapshot(ready.snapshot, async () => {
+      const charge = (await payment.tempo.charge({ amount: config.pricing.sanctionsCheck })(extra)) as any
+      if (charge.status === 402) throw charge.challenge
+      const result = await screenAddress(args.address)
+      return toolResult(charge, {
+        ...result,
+        ...walletSanctionsAttribution(),
+        checked_at: new Date().toISOString(),
+      }) as any
+    })
   }
 )
+
+async function readyForWalletScreen(address: string) {
+  try {
+    assertScreenableAddress(address)
+    return { snapshot: await loadUsableSnapshot() }
+  } catch (err) {
+    if (err instanceof SanctionsUnavailableError) return sanctionsUnavailableToolResult(err)
+    const text = err instanceof InvalidWalletAddressError ? err.message : 'wallet screening could not start'
+    return { content: [{ type: 'text' as const, text }], isError: true as const }
+  }
+}
 
 // --- Tool 2: UK company verification ------------------------------------
 server.registerTool(
@@ -115,8 +147,8 @@ server.registerTool(
   {
     title: 'Combined sanctions + UK company diligence',
     description:
-      'Runs a UK company verification (wallet sanctions screening is CURRENTLY UNAVAILABLE: ' +
-      'requests that include a wallet are refused before any payment). NOTE: these are independent checks — a clean ' +
+      'Runs an exact OFAC SDN digital-currency-address screen on an EVM wallet and/or a UK company ' +
+      'verification, whichever is provided. NOTE: these are independent checks — a clean ' +
       'result does NOT establish that the wallet belongs to the company. ' +
       'Returns a signed attestation. Charges a small stablecoin fee per call.',
     inputSchema: {
@@ -135,9 +167,17 @@ server.registerTool(
       } as any
     }
 
-    // Incident containment: a wallet check cannot be produced, so refuse before charging.
-    if (args.wallet) return sanctionsUnavailableToolResult() as any
+    // A requested wallet check needs a valid address and current data before charging.
+    if (args.wallet) {
+      const ready = await readyForWalletScreen(args.wallet)
+      if ('isError' in ready) return ready as any
+      return runWithPinnedSnapshot(ready.snapshot, () => runDiligence(args, extra))
+    }
+    return runDiligence(args, extra)
+  }
+)
 
+async function runDiligence(args: { wallet?: string; company?: string }, extra: any) {
     const charge = (await payment.tempo.charge({ amount: config.pricing.combinedDiligence })(extra)) as any
     if (charge.status === 402) throw charge.challenge
 
@@ -150,7 +190,7 @@ server.registerTool(
 
     if (walletOutcome) {
       response.wallet_check = walletOutcome.ok
-        ? { ...walletOutcome.value, ...chainalysisAttribution() }
+        ? { ...walletOutcome.value, ...walletSanctionsAttribution() }
         : { error: walletOutcome.error }
     }
     if (companyOutcome) {
@@ -163,8 +203,7 @@ server.registerTool(
       'link between the wallet address and the company is established by this data.'
 
     return toolResult(charge, response) as any
-  }
-)
+}
 
 async function safe<T>(fn: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
   try {

@@ -1,0 +1,57 @@
+name: ofac-sdn-refresh
+
+# Hourly trigger for the OFAC SDN snapshot refresh, which runs inside the MCP
+# deployment (POST https://mcp.onchaindiligence.com/internal/sanctions/refresh,
+# see docs/OFAC_SDN_SCREENING.md). This job holds only the trigger token, never
+# database credentials, and never sends a payment. It FAILS (GitHub notifies the
+# repository owner) when a refresh is quarantined, rejected or failed, or when
+# the canonical API no longer reports the snapshot as current. To approve a
+# quarantined publication, run it manually with that publication's SHA-256.
+
+on:
+  schedule:
+    - cron: '41 * * * *' # hourly, offset off the hour
+  workflow_dispatch:
+    inputs:
+      accept_shrinkage_sha256:
+        description: 'Approve a quarantined SDN.XML with exactly this SHA-256 (64 lower-case hex). Leave empty for a normal refresh.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ofac-sdn-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Trigger refresh
+        env:
+          REFRESH_TOKEN: ${{ secrets.OFAC_REFRESH_TOKEN }}
+          ACCEPT_SHA256: ${{ github.event.inputs.accept_shrinkage_sha256 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REFRESH_TOKEN}" ]; then echo "::error::OFAC_REFRESH_TOKEN secret is not set"; exit 1; fi
+          body=$(jq -cn --arg s "${ACCEPT_SHA256:-}" '{accept_shrinkage_sha256: $s}')
+          status=$(curl -sS -o refresh.json -w '%{http_code}' --max-time 300 -X POST \
+            -H "Authorization: Bearer ${REFRESH_TOKEN}" -H 'Content-Type: application/json' \
+            --data "${body}" https://mcp.onchaindiligence.com/internal/sanctions/refresh) || status=000
+          {
+            echo "## OFAC SDN refresh (HTTP ${status})"
+            echo '```json'
+            cat refresh.json 2>/dev/null || true
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${status}" != "200" ]; then echo "::error::refresh returned HTTP ${status}"; exit 1; fi
+      - name: Confirm the canonical API sees a current snapshot
+        run: |
+          set -euo pipefail
+          state=$(curl -sS --max-time 30 https://api.onchaindiligence.com/health | jq -r '.upstreams.ofac_sdn // "missing"') || state=unreachable
+          echo "Canonical API ofac_sdn: ${state}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${state}" != "current" ]; then echo "::error::canonical API reports ofac_sdn=${state}"; exit 1; fi
