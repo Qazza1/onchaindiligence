@@ -24,6 +24,7 @@
  * opt-in / batchable rather than per-call.
  */
 
+import { previewMayAnchor } from './previewGuard.js'
 import {
   createPublicClient,
   createWalletClient,
@@ -100,7 +101,9 @@ export function anchoringEnabled(): boolean {
     config.anchor.contractAddress &&
       config.anchor.privateKey &&
       config.anchor.rpcUrl &&
-      config.anchor.chainId !== null
+      config.anchor.chainId !== null &&
+      // a preview deployment never sends Tempo mainnet transactions.
+      previewMayAnchor(config.anchor.chainId)
   )
 }
 

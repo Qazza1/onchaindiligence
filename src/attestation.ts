@@ -42,6 +42,7 @@ import {
   type KeyObject,
 } from 'node:crypto'
 import { canonicalizeJson, normalizeJson } from './canonicalJson.js'
+import { previewMaySign } from './previewGuard.js'
 import {
   HISTORICAL_ATTESTATION_KEYS,
   type AttestationKeyRecord,
@@ -128,6 +129,8 @@ export function attestationEnabled(): boolean {
  */
 export function attestationSigningReady(now = new Date()): boolean {
   if (!privateKey || !keyId) return false
+  // a preview deployment never signs with a production key.
+  if (!previewMaySign(keyId)) return false
   const activation = process.env.ATTESTATION_KEY_ACTIVATED_AT
   if (!activation) return false
   const activationMs = Date.parse(activation)
