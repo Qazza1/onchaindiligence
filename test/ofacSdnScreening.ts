@@ -20,6 +20,8 @@ process.env.TEMPO_CURRENCY_ADDRESS = '0x20c0000000000000000000000000000000000000
 process.env.MPP_SECRET_KEY = 'test-mpp-secret-that-is-at-least-32-characters'
 const serviceToken = 'test-attestation-token-at-least-32-characters'
 process.env.ATTESTATION_SERVICE_TOKEN = serviceToken
+const screeningToken = 'test-dashboard-screening-token-at-least-32-chars'
+process.env.SANCTIONS_SCREENING_SERVICE_TOKEN = screeningToken
 process.env.ATTESTATION_KEY_ACTIVATED_AT = '2026-01-01T00:00:00.000Z'
 process.env.TEMPO_TESTNET = 'true'
 process.env.ATTESTATION_PRIVATE_KEY = crypto.generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
@@ -354,6 +356,31 @@ assert.equal(warn.data.signals.direct_counterparty_exposure.counterparties_scree
 assert.equal(warn.data.signals.direct_counterparty_exposure.screening_failures, 0)
 // Outside a pinned request the same failing store is an error, never a clean result.
 await assert.rejects(ws.screenAddress(NON_MATCH), ws.SanctionsUnavailableError)
+
+// 9. Dashboard internal lookup: free, unsigned, separate credential, fail closed.
+{
+  const screen = (headers: Record<string, string>, addresses: unknown) =>
+    app.request('/internal/sanctions/screen', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ addresses }) })
+  const dash = { Authorization: `Bearer ${screeningToken}` }
+  assert.equal((await screen({}, [REPORTED])).status, 401, 'no credential')
+  assert.equal((await screen(internal, [REPORTED])).status, 401, 'the signing credential is not a screening credential')
+  ws.setSanctionsSnapshotSource(async () => stored(parsed, fixtureSha, new Date(Date.now() - 7 * hour)))
+  const stale = await screen(dash, [REPORTED, NON_MATCH])
+  assert.equal(stale.status, 503, 'stale snapshot is unavailable, never not_listed')
+  assert.equal(((await stale.json()) as any).results, undefined)
+  ws.setSanctionsSnapshotSource(freshSource)
+  const ok = await screen(dash, [REPORTED_CHECKSUM, NON_MATCH, XBT_LISTED, '0xnot'])
+  assert.equal(ok.status, 200)
+  const body = (await ok.json()) as any
+  assert.equal(body.signed, false)
+  assert.equal(body.attestation, undefined, 'never signed')
+  assert.deepEqual(body.results.map((r: any) => r.status), ['listed', 'not_listed', 'unsupported_network', 'invalid_address'])
+  assert.equal(body.results[0].matches[0].sdn_uid, 24003)
+  assert.equal(body.screening.dataset.source_sha256, fixtureSha)
+  assert.ok(body.screening.limitations.length > 0)
+  assert.equal((await screen(dash, [])).status, 400)
+  assert.equal((await screen(dash, Array(51).fill(NON_MATCH))).status, 400)
+}
 
 ws.setSanctionsSnapshotSource(null)
 console.log('PASS: OFAC SDN parser/validation/freshness, exact EVM matching, delisting transition, fail-closed store, pre-payment gates, signed provenance, request pinning')
