@@ -66,7 +66,7 @@ Payment uses the HTTP `402 Payment Required` flow over MPP on Tempo:
 3. The client pays the requested pathUSD on Tempo and retries with proof.
 4. The server verifies payment, runs the check, and returns a signed result.
 
-If an upstream data source is unreachable, the server returns `503` **before** requesting payment — you are never charged for a check that can't complete.
+If an upstream data source is known to be unusable (unreachable, in maintenance, rate-limiting us, or rejecting our credentials), the server returns `503` **before** requesting payment. This readiness check is best-effort and cached for up to 30 seconds: an upstream can still fail after a payment was taken, so it reduces, but does not eliminate, the chance of paying for a check that cannot complete.
 
 ## Sanctions-source incident and replacement
 

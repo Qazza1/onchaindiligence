@@ -231,7 +231,7 @@ function healthGate(check: () => Promise<boolean>, providerName: string): Middle
       return c.json(
         {
           error: 'upstream temporarily unavailable',
-          detail: `${providerName} appears to be unreachable right now. No payment was requested. Please retry shortly.`,
+          detail: `${providerName} is not currently usable (unreachable, unavailable, rate-limited or rejecting our credentials). No payment was requested. Please retry shortly.`,
         },
         503
       )

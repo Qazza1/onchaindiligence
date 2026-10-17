@@ -18,6 +18,15 @@
  * Caching: we cache health for a short TTL so we don't add a full upstream
  * round-trip (and burn rate-limit budget) on every single request just to
  * check liveness.
+ *
+ * WHAT "HEALTHY" MEANS: the provider can USEFULLY serve a paid request right
+ * now, not merely that something answered on the network. A 503 maintenance
+ * page, a 429 rate limit, or a 401/403 rejecting our credential all mean a
+ * paid call would fail, so each provider declares the exact statuses that
+ * prove usability (PROVIDER_READY_STATUSES); anything else, including every
+ * 5xx, is unhealthy and feeds the circuit breaker. This is a best-effort
+ * pre-payment check only: an upstream can still fail after it passed, and
+ * that residual is disclosed, not promised away.
  */
 
 import { config } from './config.js'
@@ -65,7 +74,27 @@ function newBreaker(): Breaker {
   }
 }
 
-async function probe(url: string, headers: Record<string, string>): Promise<boolean> {
+/**
+ * Statuses that prove a provider can serve a real request. Everything else —
+ * 401/403 (our credential rejected or we are blocked), 429 (rate-limited),
+ * any 5xx (outage/maintenance), unexpected 4xx — is NOT usable.
+ */
+export const PROVIDER_READY_STATUSES = {
+  // A known company lookup with our key: 200, or 404 if the record is ever
+  // removed (still a well-formed authenticated API answer). 401 means the key
+  // is invalid/revoked, so every paid company check would fail.
+  companiesHouse: new Set([200, 404]),
+  // A known submissions record with SEC's required User-Agent: only 200. A
+  // 403 means SEC is refusing us (missing/blocked User-Agent or rate policy).
+  secEdgar: new Set([200]),
+} as const
+
+/** Pure classification of one probe response. */
+export function isUsableStatus(status: number, ready: ReadonlySet<number>): boolean {
+  return ready.has(status)
+}
+
+async function probe(url: string, headers: Record<string, string>, ready: ReadonlySet<number>): Promise<boolean> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
@@ -74,10 +103,10 @@ async function probe(url: string, headers: Record<string, string>): Promise<bool
       headers,
       signal: controller.signal,
     })
-    // Any HTTP response (even 4xx) means the provider is REACHABLE, which is
-    // all we're testing. 401/403/404 here just mean "we hit a real server."
-    // Only a thrown error (network down, DNS fail, timeout) is "unhealthy."
-    return res.status > 0
+    // Reachability alone is not readiness: a 503 maintenance page or a 429
+    // answers on the network but cannot serve a paid request.
+    await res.body?.cancel().catch(() => {})
+    return isUsableStatus(res.status, ready)
   } catch {
     return false
   } finally {
@@ -128,12 +157,13 @@ export function applyProbeResult(b: Breaker, healthy: boolean, now: number): boo
 }
 
 // Exported for tests only.
-export const __test = { newBreaker, FAILURE_THRESHOLD, OPEN_COOLDOWN_MS, TTL_MS }
+export const __test = { newBreaker, FAILURE_THRESHOLD, OPEN_COOLDOWN_MS, TTL_MS, reset: () => breakers.clear() }
 
 async function getHealth(
   key: string,
   url: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  ready: ReadonlySet<number>
 ): Promise<boolean> {
   const now = Date.now()
   let b = breakers.get(key)
@@ -145,7 +175,7 @@ async function getHealth(
   const decision = decideProbe(b, now)
   if (!decision.probe) return decision.result
 
-  const healthy = await probe(url, headers)
+  const healthy = await probe(url, headers, ready)
   return applyProbeResult(b, healthy, now)
 }
 
@@ -158,7 +188,8 @@ export function companiesHouseHealthy(): Promise<boolean> {
   return getHealth(
     'companiesHouse',
     `${config.companiesHouse.baseUrl}/company/00000006`,
-    { Authorization: auth }
+    { Authorization: auth },
+    PROVIDER_READY_STATUSES.companiesHouse
   )
 }
 
@@ -172,6 +203,7 @@ export function edgarHealthy(): Promise<boolean> {
   return getHealth(
     'sec-edgar',
     'https://data.sec.gov/submissions/CIK0000320193.json',
-    { 'User-Agent': config.edgar.userAgent }
+    { 'User-Agent': config.edgar.userAgent },
+    PROVIDER_READY_STATUSES.secEdgar
   )
 }
