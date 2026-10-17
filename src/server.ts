@@ -32,7 +32,7 @@ import {
   SanctionsUnavailableError,
   SANCTIONS_UNAVAILABLE_CODE,
 } from './walletSanctions.js'
-import { classifyAddress, type LoadedSnapshot } from './ofacSdnDigitalCurrency.js'
+import { classifyAddress, screenEvmAddress, type LoadedSnapshot } from './ofacSdnDigitalCurrency.js'
 import {
   checkCompany,
   buildAttribution as companiesHouseAttribution,
@@ -1006,6 +1006,77 @@ app.get(
       if (err instanceof EnsResolutionError) return c.json({ error: err.message }, 400)
       return handleUpstreamError(c, err)
     }
+  }
+)
+
+// ---------------------------------------------------------------------
+// Route: POST /internal/sanctions/screen — Dashboard backend SDN lookup
+//
+// Free, UNSIGNED, server-to-server only. Lets the Dashboard show current
+// OFAC SDN digital-currency-address results without buying a paid x402/MPP
+// screen per graph node and without ever holding a signing credential. It uses
+// the exact same validated, freshness-checked snapshot and matcher as the paid
+// routes (walletSanctions.ts), pinned once per request so every address in a
+// batch is screened against one snapshot. Stale/unavailable data is a 503,
+// never a "not listed". The credential is SANCTIONS_SCREENING_SERVICE_TOKEN and
+// is refused outright if it equals the attestation (signing) token.
+// ---------------------------------------------------------------------
+const MAX_INTERNAL_SCREEN_BATCH = 50
+
+const requireInternalScreeningAuth: MiddlewareHandler = async (c, next) => {
+  const token = config.sanctionsScreening.serviceToken
+  // Never let the signing credential double as the screening credential.
+  const configured = token.length >= 32 && token !== config.attestation.serviceToken ? token : ''
+  const auth = authorizeInternalBearer(c.req.header('authorization'), configured)
+  if (auth === 'unconfigured') {
+    return c.json({ error: 'internal sanctions screening is not configured' }, 503)
+  }
+  if (auth !== 'authorized') {
+    c.header('WWW-Authenticate', 'Bearer realm="internal-sanctions-screening"')
+    return c.json({ error: 'unauthorized' }, 401)
+  }
+  await next()
+}
+
+app.post(
+  '/internal/sanctions/screen',
+  rateLimit,
+  requireInternalScreeningAuth,
+  async (c) => {
+    let body: unknown
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400)
+    }
+    const addresses = (body as { addresses?: unknown })?.addresses
+    if (!Array.isArray(addresses) || addresses.length === 0 || addresses.length > MAX_INTERNAL_SCREEN_BATCH) {
+      return c.json({ error: `body must be { "addresses": [1..${MAX_INTERNAL_SCREEN_BATCH} strings] }` }, 400)
+    }
+    if (addresses.some((a) => typeof a !== 'string' || a.length > 128)) {
+      return c.json({ error: 'every address must be a string of at most 128 characters' }, 400)
+    }
+    const snapshot = await usableSnapshotOrResponse(c)
+    if (snapshot instanceof Response) return snapshot
+    const results = (addresses as string[]).map((input) => {
+      const kind = classifyAddress(input)
+      if (kind !== 'evm') {
+        return { address: input, status: kind === 'unsupported' ? 'unsupported_network' : 'invalid_address', matches: [] }
+      }
+      const r = screenEvmAddress(snapshot, input.trim())
+      return {
+        address: r.address.toLowerCase(),
+        status: r.match_status,
+        matches: r.matches.map((m) => ({ sdn_uid: m.sdn_uid, sdn_name: m.sdn_name, programs: m.programs, entry_url: m.entry_url })),
+      }
+    })
+    const provenance = screenEvmAddress(snapshot, '0x0000000000000000000000000000000000000000').screening
+    return c.json({
+      signed: false,
+      results,
+      screening: provenance,
+      notice: 'Unsigned internal lookup for display only. Not a signed attestation, not legal clearance.',
+    })
   }
 )
 

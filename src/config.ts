@@ -47,6 +47,15 @@ export const config = {
     serviceToken: process.env.ATTESTATION_SERVICE_TOKEN ?? '',
   },
 
+  // Authenticates the Dashboard backend's free, UNSIGNED SDN lookups
+  // (POST /internal/sanctions/screen). A separate credential from the
+  // attestation token on purpose: it can read screening results but can never
+  // sign, so the Dashboard never holds a signing-capable secret. Optional:
+  // unset means the route answers 503 and the Dashboard shows "unavailable".
+  sanctionsScreening: {
+    serviceToken: process.env.SANCTIONS_SCREENING_SERVICE_TOKEN ?? '',
+  },
+
   // --- Pricing -----------------------------------------------------------
   // Each price is deliberately small and framed as covering infra/API
   // cost, not as a markup on the underlying public-good or open-government
