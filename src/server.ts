@@ -64,7 +64,7 @@ import {
 } from './attestation.js'
 import { isTotalFailure } from './diligence.js'
 import { buildOpenApiSpec } from './openapi.js'
-import { screenName, buildOfacAttribution, OfacUpstreamError } from './ofac.js'
+import { screenName, loadSdnIndex, buildOfacAttribution, OfacUpstreamError, OfacNameScreeningUnavailableError } from './ofac.js'
 import { isSandboxVector, sandboxScreen, listVectors } from './sandbox.js'
 import {
   checkUSCompany,
@@ -259,6 +259,27 @@ const sanctionsSnapshotGate: MiddlewareHandler = async (c, next) => {
   const snapshot = await usableSnapshotOrResponse(c)
   if (snapshot instanceof Response) return snapshot
   return runWithPinnedSnapshot(snapshot, () => next())
+}
+
+// OFAC name-screening gate, placed BEFORE mppx.charge(): the validated SDN
+// name dataset must be loadable and within its freshness window, or the caller
+// gets 503 and no payment is requested. The dataset judged usable here is
+// pinned for the handler, which screens against exactly it.
+const ofacNameDatasetGate: MiddlewareHandler = async (c, next) => {
+  try {
+    c.set('ofacNameDataset' as never, (await loadSdnIndex()) as never)
+  } catch (err) {
+    if (!(err instanceof OfacUpstreamError)) throw err
+    c.header('Retry-After', '60')
+    return c.json(
+      {
+        error: 'ofac_name_screening_unavailable',
+        detail: 'A validated, current OFAC SDN name dataset is not available. No payment was requested; no screening result (positive or negative) was produced.',
+      },
+      503
+    )
+  }
+  await next()
 }
 
 function unsupportedAddressResponse(c: any, input: string) {
@@ -548,6 +569,7 @@ app.get(
   rateLimit,
   validateNameScreenQuery,
   requireSigningReadiness,
+  ofacNameDatasetGate,
   mppx.charge({ amount: config.pricing.nameScreen }),
   async (c) => {
     const name = c.req.query('name')
@@ -570,7 +592,7 @@ app.get(
     }
 
     try {
-      const result = await screenName(name, threshold)
+      const result = await screenName(name, threshold, c.get('ofacNameDataset' as never))
       return c.json(
         attest({
           ...result,
@@ -865,6 +887,7 @@ app.get(
   rateLimit,
   validateNameScreenQuery,
   requireSigningReadiness,
+  ofacNameDatasetGate,
   mppx.charge({ amount: config.pricing.webNameScreen }),
   async (c) => {
     const name = c.req.query('name')
@@ -881,7 +904,7 @@ app.get(
       threshold = parsed
     }
     try {
-      const result = await screenName(name, threshold)
+      const result = await screenName(name, threshold, c.get('ofacNameDataset' as never))
       return c.json(
         attest({
           ...result,
@@ -1063,6 +1086,9 @@ function handleUpstreamError(c: any, err: unknown) {
   if (err instanceof InvalidWalletAddressError) return c.json(invalidAddressBody(err), 400)
   if (err instanceof CompanyNotFoundError) {
     return c.json({ error: err.message }, 404)
+  }
+  if (err instanceof OfacNameScreeningUnavailableError) {
+    return c.json({ error: 'ofac_name_screening_unavailable', detail: 'No validated, current OFAC SDN name dataset; no screening result was produced.' }, 503)
   }
   if (err instanceof OfacUpstreamError) {
     return c.json(
