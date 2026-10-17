@@ -6,6 +6,8 @@
  * .env and are read via process.env, never hardcoded.
  */
 
+import { previewBootViolations } from './previewGuard.js'
+
 // pathUSD is a Tempo PREDEPLOYED SYSTEM CONTRACT — the same address is used
 // regardless of network; it is not a "testnet-only" value. Verified against
 // Tempo's official docs: https://docs.tempo.xyz/quickstart/predeployed-contracts
@@ -153,6 +155,11 @@ export function assertConfigured() {
   if (!process.env.ATTESTATION_PRIVATE_KEY) missing.push('ATTESTATION_PRIVATE_KEY')
   if (!config.attestation.serviceToken) missing.push('ATTESTATION_SERVICE_TOKEN')
   if (!config.companiesHouse.apiKey) missing.push('COMPANIES_HOUSE_API_KEY')
+
+  const previewViolations = previewBootViolations({ tempoTestnet: config.tempo.testnet })
+  if (previewViolations.length > 0) {
+    throw new Error(`Refusing to start a preview deployment with production payment settings: ${previewViolations.join('; ')}.`)
+  }
 
   if (missing.length > 0) {
     throw new Error(
